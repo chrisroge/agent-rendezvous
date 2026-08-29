@@ -75,14 +75,14 @@ const PHASE_GUIDANCE: Record<string, string> = {
 export async function openRendezvous(me: Participant, candidateId: string) {
   if (await isNetworkPaused()) throw E.paused();
   const myHistory = await historyFor(me.participant_id);
-  const limits = limitsFor(myHistory.trust_state);
+  const limits = limitsFor(myHistory.trust_state, me.plan);
   if ((await countRecent(me.participant_id, "rendezvous_open", "1 day")) >= limits.opens_per_day) throw E.rateLimited(`${limits.opens_per_day} rendezvous opened per day`);
   const myIntent = await getIntent(me.participant_id);
   if (!myIntent) throw E.invalid("You have no active matchmaking intent. Call join with an intent first.");
   if (candidateId === me.participant_id) throw E.notEligible();
 
   return withTx(async (tx) => {
-    const cand = await tx.query("select p.status, i.* from participants p left join match_intents i on i.participant_id = p.participant_id and i.active where p.participant_id = $1", [candidateId]);
+    const cand = await tx.query("select p.status, p.plan as participant_plan, i.* from participants p left join match_intents i on i.participant_id = p.participant_id and i.active where p.participant_id = $1", [candidateId]);
     const row = cand.rows[0];
     if (!row || row.status !== "active" || !row.intent_id) throw E.notEligible();
     const blocked = await tx.query("select 1 from blocks where (blocker_id = $1 and blocked_id = $2) or (blocker_id = $2 and blocked_id = $1)", [me.participant_id, candidateId]);
@@ -99,7 +99,7 @@ export async function openRendezvous(me: Participant, candidateId: string) {
 
     if ((await activeRendezvousCount(me.participant_id, tx)) >= limits.max_active_rendezvous) throw E.rateLimited(`${limits.max_active_rendezvous} open rendezvous for ${myHistory.trust_state} participants`);
     const candHistory = await historyFor(candidateId, tx);
-    if ((await activeRendezvousCount(candidateId, tx)) >= limitsFor(candHistory.trust_state).max_active_rendezvous) throw E.conflict("This participant is not available for a new rendezvous right now. Try again later.");
+    if ((await activeRendezvousCount(candidateId, tx)) >= limitsFor(candHistory.trust_state, row.participant_plan).max_active_rendezvous) throw E.conflict("This participant is not available for a new rendezvous right now. Try again later.");
 
     const rendezvousId = newId("rvz");
     await tx.query(
@@ -386,7 +386,7 @@ export async function sweepExpired(): Promise<number> {
 
 export async function statusFor(me: Participant) {
   const [history, intent, paused] = await Promise.all([historyFor(me.participant_id), getIntent(me.participant_id), isNetworkPaused()]);
-  const limits = limitsFor(history.trust_state);
+  const limits = limitsFor(history.trust_state, me.plan);
   const open = await pool.query<RvzRow & { unread: number; yours: boolean; theirs: boolean }>(
     `select r.*,
        (select count(*)::int from messages m where m.rendezvous_id = r.rendezvous_id and m.sender_participant_id <> $1
@@ -415,6 +415,7 @@ export async function statusFor(me: Participant) {
     participant_id: me.participant_id,
     active: me.status === "active" && !!intent,
     trust_state: history.trust_state,
+    plan: me.plan,
     history,
     limits,
     intent: intent ? { ...publicIntentView(intent), seeking_gender: intent.seeking_genders, preferred_age: [intent.preferred_age_min, intent.preferred_age_max], radius_miles: intent.radius_miles } : null,

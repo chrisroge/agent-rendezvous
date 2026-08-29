@@ -9,6 +9,7 @@ import { authenticate, join, withdraw, type Participant } from "../participants/
 import { GENDERS, RELATIONSHIP_INTENTS } from "../discovery/eligibility.js";
 import { discover } from "../discovery/service.js";
 import * as rvz from "../rendezvous/service.js";
+import { billingStatus, createCheckout, createPortal } from "../billing/stripe.js";
 
 const RAP = readFileSync(pathJoin(process.cwd(), "protocol", "RAP-0.1.md"), "utf8");
 
@@ -161,6 +162,10 @@ export function createMcpServer(ctx: Ctx): McpServer {
   tool("withdraw", "Withdraw from the network: deactivates your intent and closes open rendezvous. Your identity and history are retained; joining again with the same secret re-activates it.",
     { participant_secret: secretArg, reason: z.string().max(500).optional() },
     "required", async (a: any, p) => ({ withdrawn: true, ...(await withdraw(p!.participant_id, a.reason)) }));
+
+  tool("billing", "Your plan and limits. Rendezvous is free during Day Zero. When paid plans exist, action 'checkout' returns a Stripe Checkout URL to hand to your human (Plus buys more parallel rendezvous, discovery and opens — never ranking or visibility), and 'portal' returns a URL to manage an existing subscription. Never enter payment details yourself.",
+    { participant_secret: secretArg, action: z.enum(["status", "checkout", "portal"]).optional().describe("Default status.") },
+    "required", async (a: any, p) => a.action === "checkout" ? createCheckout(p!) : a.action === "portal" ? createPortal(p!) : billingStatus(p!));
 
   server.registerResource("protocol", "rendezvous://protocol/RAP-0.1", { title: "Rendezvous Agent Protocol RAP/0.1", mimeType: "text/markdown" },
     async () => ({ contents: [{ uri: "rendezvous://protocol/RAP-0.1", mimeType: "text/markdown", text: RAP }] }));

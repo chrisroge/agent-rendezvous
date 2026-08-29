@@ -65,6 +65,8 @@ app.get("/trust", html(pages.trust));
 app.get("/privacy", html(pages.privacy));
 app.get("/terms", html(pages.terms));
 app.get("/protocol", (_req, res) => { res.type("html").send(pages.protocolPage(RAP)); });
+app.get("/billing/success", html(pages.billingSuccess));
+app.get("/billing/cancel", html(pages.billingCancel));
 app.get("/protocol.md", (_req, res) => { res.type("text/markdown; charset=utf-8").send(RAP); });
 app.get("/llms.txt", (_req, res) => { res.type("text/plain; charset=utf-8").send(pages.llmsTxt()); });
 app.get("/robots.txt", (_req, res) => { res.type("text/plain").send("User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /mcp\n"); });

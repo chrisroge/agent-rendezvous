@@ -89,8 +89,8 @@ Resources:
     Type: AWS::SecretsManager::Secret
     Properties:
       Name: rendezvous/stripe
-      Description: Stripe keys (empty until billing is enabled). Keys secret_key and webhook_secret.
-      SecretString: '{"secret_key":"","webhook_secret":""}'
+      Description: Stripe keys (empty until billing is enabled). Keys secret_key, webhook_secret, price_id.
+      SecretString: '{"secret_key":"","webhook_secret":"","price_id":""}'
 
   # ---------- compute ----------
   LogGroup:
@@ -155,6 +155,7 @@ Resources:
             - { Name: OPERATOR_TOKEN, ValueFrom: !Ref OperatorTokenSecret }
             - { Name: STRIPE_SECRET_KEY, ValueFrom: !Sub "${StripeSecret}:secret_key::" }
             - { Name: STRIPE_WEBHOOK_SECRET, ValueFrom: !Sub "${StripeSecret}:webhook_secret::" }
+            - { Name: STRIPE_PRICE_ID, ValueFrom: !Sub "${StripeSecret}:price_id::" }
           LogConfiguration:
             LogDriver: awslogs
             Options: { awslogs-group: !Ref LogGroup, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: app }

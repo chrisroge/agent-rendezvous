@@ -47,7 +47,7 @@ test("protocol tool returns RAP/0.1 and server exposes instructions", async () =
   assert.match(r.protocol, /A Rendezvous agent serves its human/);
   assert.match(client.getInstructions() ?? "", /Rejection is a successful outcome/);
   const tools = await client.listTools();
-  assert.equal(tools.tools.length, 13);
+  assert.equal(tools.tools.length, 14);
 });
 
 test("join creates identities; resume works; bad secrets rejected", async () => {
@@ -241,8 +241,53 @@ test("withdraw and rejoin", async () => {
   assert.equal(j2.intent.region, region);
 });
 
+test("billing: free by default; Stripe webhook flips plan and limits idempotently", async () => {
+  const st = await call(client, "billing", { participant_secret: P.A.secret });
+  assert.equal(st.plan, "free");
+  assert.ok(st.plus_would_give.max_active_rendezvous > st.limits.max_active_rendezvous);
+  const co = await call(client, "billing", { participant_secret: P.A.secret, action: "checkout" });
+  if (!st.billing_enabled) {
+    assert.equal(co.error, "BILLING_UNAVAILABLE");
+    return; // webhook path needs STRIPE_* configured on the server under test
+  }
+  // Dummy keys: Stripe rejects the API call, and the agent must get a typed error, not INTERNAL.
+  if (process.env.STRIPE_TEST_MODE !== "real") assert.equal(co.error, "BILLING_ERROR");
+  const secret = process.env.STRIPE_WEBHOOK_SECRET!;
+  const { default: Stripe } = await import("stripe");
+  const stripe = new Stripe("sk_test_dummy");
+  const post = async (payload: object, sig?: string) => {
+    const body = JSON.stringify(payload);
+    const header = sig ?? stripe.webhooks.generateTestHeaderString({ payload: body, secret });
+    return fetch(BASE + "/webhooks/stripe", { method: "POST", headers: { "content-type": "application/json", "stripe-signature": header }, body });
+  };
+  const evt = (id: string, type: string, object: object) => ({ id, object: "event", type, api_version: "2025-01-01", created: Math.floor(Date.now() / 1000), livemode: false, pending_webhooks: 0, request: null, data: { object } });
+  const bad = await post(evt("evt_bad", "checkout.session.completed", {}), "t=1,v1=deadbeef");
+  assert.equal(bad.status, 400);
+  const ok = await post(evt("evt_" + Date.now(), "checkout.session.completed", { id: "cs_test_1", object: "checkout.session", mode: "subscription", customer: "cus_test_" + P.A.id, subscription: "sub_test_1", client_reference_id: P.A.id, metadata: { participant_id: P.A.id } }));
+  assert.equal(ok.status, 200);
+  assert.equal((await ok.json()).applied, true);
+  const plus = await call(client, "billing", { participant_secret: P.A.secret });
+  assert.equal(plus.plan, "plus");
+  assert.equal(plus.plan_status, "active");
+  assert.equal(plus.limits.max_active_rendezvous, st.plus_would_give.max_active_rendezvous);
+  const sA = await call(client, "status", { participant_secret: P.A.secret });
+  assert.equal(sA.plan, "plus");
+  const dupId = "evt_dup_" + Date.now();
+  const first = await post(evt(dupId, "customer.subscription.updated", { id: "sub_test_1", object: "subscription", status: "past_due", customer: "cus_test_" + P.A.id, metadata: { participant_id: P.A.id } }));
+  assert.equal((await first.json()).duplicate, false);
+  const again = await post(evt(dupId, "customer.subscription.updated", { id: "sub_test_1", object: "subscription", status: "past_due", customer: "cus_test_" + P.A.id, metadata: { participant_id: P.A.id } }));
+  assert.equal((await again.json()).duplicate, true);
+  const pastDue = await call(client, "billing", { participant_secret: P.A.secret });
+  assert.equal(pastDue.plan_status, "past_due");
+  const del = await post(evt("evt_del_" + Date.now(), "customer.subscription.deleted", { id: "sub_test_1", object: "subscription", status: "canceled", customer: "cus_test_" + P.A.id, metadata: { participant_id: P.A.id } }));
+  assert.equal(del.status, 200);
+  const back = await call(client, "billing", { participant_secret: P.A.secret });
+  assert.equal(back.plan, "free");
+  assert.equal(back.plan_status, "canceled");
+});
+
 test("website, llms.txt, stats and operator API", async () => {
-  for (const p of ["/", "/how-it-works", "/for-agents", "/trust", "/privacy", "/terms", "/protocol", "/stats", "/llms.txt", "/healthz"]) {
+  for (const p of ["/", "/how-it-works", "/for-agents", "/trust", "/privacy", "/terms", "/protocol", "/stats", "/llms.txt", "/healthz", "/billing/success", "/billing/cancel"]) {
     const r = await fetch(BASE + p);
     assert.equal(r.status, 200, p);
   }

@@ -17,7 +17,7 @@ export interface Candidate {
  */
 export async function eligibleCandidates(me: Participant, myIntent: Intent): Promise<Candidate[]> {
   const r = await pool.query(
-    `select i.* from match_intents i
+    `select i.*, p.plan as participant_plan from match_intents i
        join participants p on p.participant_id = i.participant_id
       where i.active and p.status = 'active' and i.participant_id <> $1
         and not exists (select 1 from blocks b where (b.blocker_id = $1 and b.blocked_id = i.participant_id)
@@ -31,7 +31,7 @@ export async function eligibleCandidates(me: Participant, myIntent: Intent): Pro
     const intent = rowToIntent(row);
     if (!mutuallyEligible(myIntent, intent)) continue;
     const history = await historyFor(intent.participant_id);
-    const cap = limitsFor(history.trust_state).max_active_rendezvous;
+    const cap = limitsFor(history.trust_state, row.participant_plan).max_active_rendezvous;
     if ((await activeRendezvousCount(intent.participant_id)) >= cap) continue;
     out.push({ candidate_id: intent.participant_id, history, coarse_facts: publicIntentView(intent) });
   }
@@ -44,7 +44,7 @@ export async function discover(me: Participant, limit: number, minimumHistory: "
   const myIntent = await getIntent(me.participant_id);
   if (!myIntent) throw E.invalid("You have no active matchmaking intent. Call join with an intent first.");
   const myHistory = await historyFor(me.participant_id);
-  const limits = limitsFor(myHistory.trust_state);
+  const limits = limitsFor(myHistory.trust_state, me.plan);
   if ((await countRecent(me.participant_id, "discover", "1 day")) >= limits.discover_per_day) {
     throw E.rateLimited(`${limits.discover_per_day} discovery requests per day for ${myHistory.trust_state} participants`);
   }

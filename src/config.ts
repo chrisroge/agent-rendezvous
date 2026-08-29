@@ -43,6 +43,12 @@ export const config = {
   operatorToken: str("OPERATOR_TOKEN", ""),
   stripeSecretKey: str("STRIPE_SECRET_KEY", ""),
   stripeWebhookSecret: str("STRIPE_WEBHOOK_SECRET", ""),
+  stripePriceId: str("STRIPE_PRICE_ID", ""),
+  plusPlan: {
+    activeRendezvousMultiplier: int("PLUS_ACTIVE_MULTIPLIER", 2),
+    discoverMultiplier: int("PLUS_DISCOVER_MULTIPLIER", 3),
+    opensMultiplier: int("PLUS_OPENS_MULTIPLIER", 2),
+  },
   db: dbConfig(),
   limits: {
     newMaxActiveRendezvous: int("NEW_MAX_ACTIVE_RVZ", 3),

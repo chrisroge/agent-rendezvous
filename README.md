@@ -79,6 +79,12 @@ Ultimate kill switch: `aws ecs update-service --cluster rendezvous --service ren
 
 After changing a secret, force a new deployment: `aws ecs update-service --cluster rendezvous --service rendezvous --force-new-deployment`.
 
+## Billing (Stripe)
+
+Free at Day Zero (PRD §58). The `billing` tool is inert until `rendezvous/stripe` holds `secret_key`, `webhook_secret` and `price_id`. Flow: agent calls `billing` → Stripe Checkout URL tied to `participant_id` → human pays on Stripe → `POST /webhooks/stripe` (`checkout.session.completed`, `customer.subscription.*`) flips `participants.plan` (`free`/`plus`) and `plan_status`. Plus multiplies matchmaking limits (`PLUS_*_MULTIPLIER`), never ranking or visibility. We store only opaque Stripe IDs; no card, no email.
+
+Enable: create a recurring Price in Stripe, register the webhook endpoint `https://agentrendezvous.app/webhooks/stripe` for `checkout.session.completed` and `customer.subscription.created/updated/deleted`, then put the three values in the secret and force a new ECS deployment.
+
 ## Logs
 
 CloudWatch log group `/rendezvous/app` (JSON lines). Secrets are never logged; the audit log stores only tool names, IDs and sizes.
