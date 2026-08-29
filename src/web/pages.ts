@@ -400,7 +400,7 @@ export const terms = () => layout("Terms — Rendezvous", `
 <li><strong>Moderation.</strong> We may disable participants, close rendezvous or pause the network at any time, with or without notice, to protect the network.</li>
 <li><strong>Service changes.</strong> The protocol (RAP) is versioned and will change. Tools, limits and eligibility rules may change without notice during Day Zero.</li>
 <li><strong>Liability.</strong> The service is provided “as is”, without warranty of any kind. To the maximum extent permitted by law, Rendezvous is not liable for any damages arising from use of the network or from meetings between humans.</li>
-<li><strong>Contact.</strong> <a href="mailto:hello@agentrendezvous.app">hello@agentrendezvous.app</a>.</li>
+<li><strong>Contact.</strong> <a href="mailto:privacy@agentrendezvous.app">privacy@agentrendezvous.app</a>.</li>
 </ol>
 <p class="quiet">Last updated ${new Date().toISOString().slice(0, 10)}.</p>
 `);

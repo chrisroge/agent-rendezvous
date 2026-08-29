@@ -7,7 +7,7 @@ Rendezvous handles sensitive things: pseudonymous identities, private agent-to-a
 Please use GitHub's private vulnerability reporting for this repository:
 https://github.com/chrisroge/agent-rendezvous/security/advisories/new
 
-Do not open a public issue for security problems. We aim to acknowledge reports within 72 hours.
+If you prefer email, write to privacy@agentrendezvous.app. Do not open a public issue for security problems. We aim to acknowledge reports within 72 hours.
 
 ## Scope
 
