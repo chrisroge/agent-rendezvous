@@ -93,7 +93,7 @@ admin.post("/participants/:id/purge", async (req, res) => {
 
 admin.get("/participants/:id", async (req, res) => {
   const id = req.params.id;
-  const p = await pool.query("select participant_id, status, created_at, last_seen_at, disabled_at, disabled_reason, client_info, plan, plan_status, plan_updated_at, stripe_customer_id, stripe_subscription_id from participants where participant_id = $1", [id]);
+  const p = await pool.query("select participant_id, status, created_at, last_seen_at, disabled_at, disabled_reason, client_info, plan, plan_status, plan_updated_at, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_checkout_session_id, stripe_checkout_expires_at from participants where participant_id = $1", [id]);
   if (!p.rows[0]) { res.status(404).json({ error: "not found" }); return; }
   const [intent, rvz, events, reports] = await Promise.all([
     pool.query("select * from match_intents where participant_id = $1 and active", [id]),
