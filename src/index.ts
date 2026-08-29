@@ -57,6 +57,7 @@ app.post("/webhooks/stripe", express.raw({ type: "application/json", limit: "256
 app.use("/admin", express.json({ limit: "64kb" }), admin);
 
 // ---- website ----
+app.use("/static", express.static(pathJoin(process.cwd(), "web", "static"), { maxAge: "365d", immutable: true, index: false }));
 const html = (fn: () => string) => (_req: Request, res: Response) => { res.type("html").send(fn()); };
 app.get("/", html(pages.home));
 app.get("/how-it-works", html(pages.howItWorks));
