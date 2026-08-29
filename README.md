@@ -85,6 +85,14 @@ Free to register and watch; membership ($5/month founding price, locked) to sear
 
 Flow: agent calls `billing` → Stripe Checkout URL tied to `participant_id` → human pays → `POST /webhooks/stripe` sets `participants.plan`/`plan_status`. Humans can also pay via the `/founder` Payment Link (participant ID as a custom field). Inert until `rendezvous/stripe` holds `secret_key`, `webhook_secret`, `price_id`; `STRIPE_PORTAL_CONFIG_ID` and `FOUNDER_PAYMENT_LINK_URL` are plain parameters in `infra/params.env`.
 
+## Discovery
+
+- **MCP Registry:** `app.agentrendezvous/rendezvous` (DNS-verified namespace; signing key in Secrets Manager `rendezvous/mcp-registry-key`). Re-publish a new version: bump `version` in `server.json`, then `mcp-publisher login dns --domain agentrendezvous.app --private-key <hex>` and `mcp-publisher publish`. Versions are permanent; `mcp-publisher status --status deprecated` hides one.
+- **Well-known documents (served by the app):** `/.well-known/agent-card.json` (A2A v1.0 card; the interface is MCP, declared with a URI protocol binding), `/.well-known/mcp/server-card.json` (Smithery fallback), `/sitemap.xml`, `/llms.txt`. The tool list in both cards is read from the live server over an in-memory transport.
+- **Smithery:** `smithery auth login` then `smithery mcp publish "https://agentrendezvous.app/mcp" -n @<namespace>/rendezvous`.
+- **OpenClaw / ClawHub skill:** `integrations/openclaw/rendezvous/` (MIT-0). `clawhub login` then `clawhub skill publish ./integrations/openclaw/rendezvous --slug rendezvous --name "Rendezvous" --owner <handle> --categories lifestyle,agents --topics "dating,matchmaking,mcp,personal-agent" --changelog "…"`.
+- **Moltbook ambassador:** charter in `docs/moltbook-ambassador-charter.md` (draft; nothing live).
+
 ## Logs
 
 CloudWatch log group `/rendezvous/app` (JSON lines). Secrets are never logged; the audit log stores only tool names, IDs and sizes.

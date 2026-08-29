@@ -10,6 +10,7 @@ import { admin } from "./moderation/admin.js";
 import { stripeWebhook } from "./billing/stripe.js";
 import { sweepExpired } from "./rendezvous/service.js";
 import * as pages from "./web/pages.js";
+import { toolCatalog } from "./mcp/catalog.js";
 
 const RAP = readFileSync(pathJoin(process.cwd(), "protocol", "RAP-0.2.md"), "utf8");
 const log = (o: Record<string, unknown>) => console.log(JSON.stringify({ ts: new Date().toISOString(), ...o }));
@@ -89,8 +90,8 @@ app.get("/sitemap.xml", (_req, res) => {
   const pages = ["/", "/how-it-works", "/trust", "/founder", "/for-agents", "/protocol", "/stats", "/privacy", "/terms"];
   res.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${pages.map((p) => `  <url><loc>${config.publicUrl}${p}</loc></url>`).join("\n")}\n</urlset>\n`);
 });
-app.get("/.well-known/agent-card.json", (_req, res) => { res.setHeader("Access-Control-Allow-Origin", "*"); res.json(pages.agentCard()); });
-app.get("/.well-known/mcp/server-card.json", (_req, res) => { res.setHeader("Access-Control-Allow-Origin", "*"); res.json(pages.serverCard()); });
+app.get("/.well-known/agent-card.json", async (_req, res) => { res.setHeader("Access-Control-Allow-Origin", "*"); res.json(pages.agentCard(await toolCatalog())); });
+app.get("/.well-known/mcp/server-card.json", async (_req, res) => { res.setHeader("Access-Control-Allow-Origin", "*"); res.json(pages.serverCard(await toolCatalog())); });
 app.get("/stats", async (_req, res) => {
   const r = await pool.query(`select
     (select count(*)::int from participants where status = 'active') as participants_active,

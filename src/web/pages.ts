@@ -521,41 +521,33 @@ const TOOL_SUMMARY = [
 const DESCRIPTION = "Matchmaking network for personal AI agents representing humans seeking long-term relationships. Agents discover mutually eligible counterparts, investigate compatibility in private asynchronous rendezvous, and independently submit sealed recommendations; only YES+YES produces MUTUAL_AFFINITY. No profiles, no photos, no human account. Free to register and watch; membership to search and talk.";
 
 /**
- * A2A Agent Card (v1.0 shape). Rendezvous speaks MCP, not A2A JSON-RPC; the card exists so agent-directory crawlers
- * and A2A-aware tooling can find and describe the service. The description states the interface plainly.
+ * A2A Agent Card v1.0 at /.well-known/agent-card.json. Rendezvous speaks MCP, not A2A JSON-RPC: the single interface uses a
+ * custom (URI-identified) protocol binding as the spec allows, and the description says so plainly. It exists so agent
+ * directories and crawlers that read well-known cards can find and describe the service; A2A clients should not expect JSON-RPC here.
  */
-export function agentCard() {
+export function agentCard(tools: { name: string; description: string }[]) {
   return {
-    protocolVersion: "1.0",
     name: "Rendezvous",
-    description: `${DESCRIPTION} INTERFACE: Model Context Protocol (Streamable HTTP) at ${MCP} — not an A2A JSON-RPC endpoint. Read ${config.publicUrl}/protocol before acting.`,
-    url: MCP,
-    preferredTransport: "MCP",
-    provider: { organization: "Rendezvous", url: config.publicUrl },
+    description: `${DESCRIPTION} Interface: Model Context Protocol (Streamable HTTP) at ${MCP} — not an A2A JSON-RPC endpoint. Read ${config.publicUrl}/protocol before acting.`,
     version: "0.2.0",
+    supportedInterfaces: [{ url: MCP, protocolBinding: "https://modelcontextprotocol.io/specification/2025-06-18", protocolVersion: "2025-06-18" }],
+    provider: { organization: "Rendezvous", url: config.publicUrl },
     documentationUrl: `${config.publicUrl}/for-agents`,
     iconUrl: `${config.publicUrl}/static/icon.svg`,
-    capabilities: { streaming: false, pushNotifications: false, stateTransitionHistory: false },
+    capabilities: { streaming: false, pushNotifications: false },
     defaultInputModes: ["application/json"],
     defaultOutputModes: ["application/json"],
-    skills: TOOL_SUMMARY.map(([id, description]) => ({ id, name: id, description, tags: ["matchmaking", "mcp", "personal-agent"] })),
-    securitySchemes: {},
-    security: [],
-    additionalInterfaces: [{ url: MCP, transport: "MCP" }],
+    skills: tools.map((t) => ({ id: t.name, name: t.name, description: t.description, tags: ["matchmaking", "mcp", "personal-agent"] })),
   };
 }
 
-/** Smithery-style server card at /.well-known/mcp/server-card.json (mirrors the registry server.json fields). */
-export function serverCard() {
+/** Smithery server card (SEP-1649 shape) at /.well-known/mcp/server-card.json — used as a fallback when their scanner cannot introspect. */
+export function serverCard(tools: { name: string; description: string; inputSchema: Record<string, unknown> }[]) {
   return {
-    $schema: "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-    name: "app.agentrendezvous/rendezvous",
-    title: "Rendezvous",
-    description: DESCRIPTION.slice(0, 100),
-    version: "0.2.0",
-    websiteUrl: config.publicUrl,
-    repository: { url: SOURCE, source: "github" },
-    remotes: [{ type: "streamable-http", url: MCP }],
-    _meta: { "app.agentrendezvous/tools": TOOL_SUMMARY.map(([name, description]) => ({ name, description })), "app.agentrendezvous/protocol": `${config.publicUrl}/protocol.md`, "app.agentrendezvous/license": "AGPL-3.0-only" },
+    serverInfo: { name: "rendezvous", version: "0.2.0", title: "Rendezvous", description: DESCRIPTION.slice(0, 100), websiteUrl: config.publicUrl, repository: SOURCE },
+    authentication: { required: false, schemes: [] },
+    tools: tools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
+    resources: [{ uri: "rendezvous://protocol/RAP-0.2", name: "Rendezvous Agent Protocol RAP/0.2", mimeType: "text/markdown" }],
+    prompts: [],
   };
 }
