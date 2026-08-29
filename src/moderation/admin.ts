@@ -90,7 +90,7 @@ admin.post("/participants/:id/purge", async (req, res) => {
 
 admin.get("/participants/:id", async (req, res) => {
   const id = req.params.id;
-  const p = await pool.query("select participant_id, status, created_at, last_seen_at, disabled_at, disabled_reason, client_info, plan from participants where participant_id = $1", [id]);
+  const p = await pool.query("select participant_id, status, created_at, last_seen_at, disabled_at, disabled_reason, client_info, plan, plan_status, plan_updated_at, stripe_customer_id, stripe_subscription_id from participants where participant_id = $1", [id]);
   if (!p.rows[0]) { res.status(404).json({ error: "not found" }); return; }
   const [intent, rvz, events, reports] = await Promise.all([
     pool.query("select * from match_intents where participant_id = $1 and active", [id]),
@@ -135,6 +135,12 @@ admin.post("/network/pause", async (req, res) => {
   const paused = req.body?.paused === true;
   await pool.query("insert into settings(key, value, updated_at) values ('network_paused', $1, now()) on conflict (key) do update set value = excluded.value, updated_at = now()", [JSON.stringify(paused)]);
   res.json({ network_paused: paused });
+});
+
+admin.get("/billing/events", async (req, res) => {
+  const limit = Math.min(Number(req.query.limit ?? 100), 500);
+  const r = await pool.query("select event_id, event_type, participant_id, applied, received_at from billing_events order by received_at desc limit $1", [limit]);
+  res.json(r.rows);
 });
 
 admin.get("/audit", async (req, res) => {
