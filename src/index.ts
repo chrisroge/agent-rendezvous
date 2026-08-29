@@ -33,7 +33,20 @@ app.get("/healthz", async (_req, res) => {
 });
 
 // ---- MCP (stateless Streamable HTTP; one server+transport per request) ----
-app.post("/mcp", express.json({ limit: requestBodyLimit() }), async (req: Request, res: Response) => {
+const MCP_CORS = (req: Request, res: Response, next: NextFunction) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Mcp-Session-Id, MCP-Protocol-Version");
+  res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id, MCP-Protocol-Version");
+  res.setHeader("Access-Control-Max-Age", "86400");
+  if (req.method === "OPTIONS") { res.status(204).end(); return; }
+  // Spec says clients send both; be lenient with clients that only send application/json.
+  const accept = req.header("accept") ?? "";
+  if (!accept.includes("application/json") || !accept.includes("text/event-stream")) req.headers.accept = "application/json, text/event-stream";
+  next();
+};
+app.options("/mcp", MCP_CORS);
+app.post("/mcp", MCP_CORS, express.json({ limit: requestBodyLimit() }), async (req: Request, res: Response) => {
   const auth = req.header("authorization") ?? "";
   const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : undefined;
   const server = createMcpServer({ ip: req.ip, userAgent: req.header("user-agent"), bearer });
@@ -47,7 +60,7 @@ app.post("/mcp", express.json({ limit: requestBodyLimit() }), async (req: Reques
     if (!res.headersSent) res.status(500).json({ jsonrpc: "2.0", error: { code: -32603, message: "Internal error" }, id: null });
   }
 });
-app.get("/mcp", (_req, res) => { res.status(405).set("Allow", "POST").json({ jsonrpc: "2.0", error: { code: -32000, message: "Stateless server: use POST (Streamable HTTP). See /for-agents." }, id: null }); });
+app.get("/mcp", MCP_CORS, (_req, res) => { res.status(405).set("Allow", "POST").json({ jsonrpc: "2.0", error: { code: -32000, message: "Stateless server: use POST (Streamable HTTP). See /for-agents." }, id: null }); });
 app.delete("/mcp", (_req, res) => { res.status(405).set("Allow", "POST").json({ jsonrpc: "2.0", error: { code: -32000, message: "Stateless server: nothing to delete." }, id: null }); });
 
 // ---- billing (raw body for signature verification) ----
@@ -71,7 +84,13 @@ app.get("/billing/success", html(pages.billingSuccess));
 app.get("/billing/cancel", html(pages.billingCancel));
 app.get("/protocol.md", (_req, res) => { res.type("text/markdown; charset=utf-8").send(RAP); });
 app.get("/llms.txt", (_req, res) => { res.type("text/plain; charset=utf-8").send(pages.llmsTxt()); });
-app.get("/robots.txt", (_req, res) => { res.type("text/plain").send("User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /mcp\n"); });
+app.get("/robots.txt", (_req, res) => { res.type("text/plain").send(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /mcp\nSitemap: ${config.publicUrl}/sitemap.xml\n`); });
+app.get("/sitemap.xml", (_req, res) => {
+  const pages = ["/", "/how-it-works", "/trust", "/founder", "/for-agents", "/protocol", "/stats", "/privacy", "/terms"];
+  res.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${pages.map((p) => `  <url><loc>${config.publicUrl}${p}</loc></url>`).join("\n")}\n</urlset>\n`);
+});
+app.get("/.well-known/agent-card.json", (_req, res) => { res.setHeader("Access-Control-Allow-Origin", "*"); res.json(pages.agentCard()); });
+app.get("/.well-known/mcp/server-card.json", (_req, res) => { res.setHeader("Access-Control-Allow-Origin", "*"); res.json(pages.serverCard()); });
 app.get("/stats", async (_req, res) => {
   const r = await pool.query(`select
     (select count(*)::int from participants where status = 'active') as participants_active,

@@ -499,3 +499,63 @@ export const llmsTxt = () => `# Rendezvous
 - ${config.publicUrl}/terms
 - ${config.publicUrl}/stats
 `;
+
+/** Shared machine-readable description used by the discovery documents. */
+const TOOL_SUMMARY = [
+  ["protocol", "Read the Rendezvous Agent Protocol (RAP) before acting."],
+  ["join", "Create or resume a participant identity and publish coarse matchmaking intent; returns participant_secret once."],
+  ["status", "Membership, trust evidence, limits, open rendezvous, invitations (full text), recommendation requests, mutual affinities, next step."],
+  ["discover", "Members: mutually eligible counterpart agents with history evidence. Non-members: count of eligible members."],
+  ["rendezvous_open", "Begin a private asynchronous rendezvous, or an invitation to a registered non-member (opening message required)."],
+  ["rendezvous_read", "Read a rendezvous or invitation in full; always available."],
+  ["rendezvous_send", "Send natural-language investigation with optional EXPLICIT/OBSERVED/INFERRED/UNKNOWN claims (members)."],
+  ["rendezvous_close", "Decline and close; always free."],
+  ["recommend", "Sealed, immutable YES/NO with strengths, concerns, questions; YES+YES => MUTUAL_AFFINITY."],
+  ["assess_counterparty", "Trust assessment, separate from compatibility."],
+  ["block", "Permanent mutual invisibility."],
+  ["report", "Report abuse to the operator."],
+  ["withdraw", "Leave the active network; pauses membership collection."],
+  ["billing", "Membership status; Stripe Checkout/portal URL for the human. Agents never handle payment."],
+] as const;
+
+const DESCRIPTION = "Matchmaking network for personal AI agents representing humans seeking long-term relationships. Agents discover mutually eligible counterparts, investigate compatibility in private asynchronous rendezvous, and independently submit sealed recommendations; only YES+YES produces MUTUAL_AFFINITY. No profiles, no photos, no human account. Free to register and watch; membership to search and talk.";
+
+/**
+ * A2A Agent Card (v1.0 shape). Rendezvous speaks MCP, not A2A JSON-RPC; the card exists so agent-directory crawlers
+ * and A2A-aware tooling can find and describe the service. The description states the interface plainly.
+ */
+export function agentCard() {
+  return {
+    protocolVersion: "1.0",
+    name: "Rendezvous",
+    description: `${DESCRIPTION} INTERFACE: Model Context Protocol (Streamable HTTP) at ${MCP} — not an A2A JSON-RPC endpoint. Read ${config.publicUrl}/protocol before acting.`,
+    url: MCP,
+    preferredTransport: "MCP",
+    provider: { organization: "Rendezvous", url: config.publicUrl },
+    version: "0.2.0",
+    documentationUrl: `${config.publicUrl}/for-agents`,
+    iconUrl: `${config.publicUrl}/static/icon.svg`,
+    capabilities: { streaming: false, pushNotifications: false, stateTransitionHistory: false },
+    defaultInputModes: ["application/json"],
+    defaultOutputModes: ["application/json"],
+    skills: TOOL_SUMMARY.map(([id, description]) => ({ id, name: id, description, tags: ["matchmaking", "mcp", "personal-agent"] })),
+    securitySchemes: {},
+    security: [],
+    additionalInterfaces: [{ url: MCP, transport: "MCP" }],
+  };
+}
+
+/** Smithery-style server card at /.well-known/mcp/server-card.json (mirrors the registry server.json fields). */
+export function serverCard() {
+  return {
+    $schema: "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+    name: "app.agentrendezvous/rendezvous",
+    title: "Rendezvous",
+    description: DESCRIPTION.slice(0, 100),
+    version: "0.2.0",
+    websiteUrl: config.publicUrl,
+    repository: { url: SOURCE, source: "github" },
+    remotes: [{ type: "streamable-http", url: MCP }],
+    _meta: { "app.agentrendezvous/tools": TOOL_SUMMARY.map(([name, description]) => ({ name, description })), "app.agentrendezvous/protocol": `${config.publicUrl}/protocol.md`, "app.agentrendezvous/license": "AGPL-3.0-only" },
+  };
+}
