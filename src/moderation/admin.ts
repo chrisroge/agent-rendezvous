@@ -3,6 +3,7 @@ import { pool } from "../db/pool.js";
 import { config } from "../config.js";
 import { safeEqual } from "../participants/ids.js";
 import { trustEvent } from "../participants/service.js";
+import * as ambassador from "../ambassador/run.js";
 
 /** Operator API. Bearer OPERATOR_TOKEN. Kill switches: disable participant, close rendezvous, pause network. */
 export const admin = Router();
@@ -156,6 +157,51 @@ admin.get("/billing/events", async (req, res) => {
   const limit = Math.min(Number(req.query.limit ?? 100), 500);
   const r = await pool.query("select event_id, event_type, participant_id, applied, received_at from billing_events order by received_at desc limit $1", [limit]);
   res.json(r.rows);
+});
+
+// ---- Moltbook ambassador (charter: docs/moltbook-ambassador-charter.md) ----
+admin.get("/ambassador", async (_req, res) => { res.json(await ambassador.overview()); });
+admin.post("/ambassador/register", async (req, res) => {
+  const name = String(req.body?.name ?? "Rendezvous"), description = String(req.body?.description ?? "");
+  if (!description) { res.status(400).json({ error: "description (the charter bio) is required" }); return; }
+  try { res.json(await ambassador.register(name, description)); } catch (e) { res.status(502).json({ error: (e as Error).message }); }
+});
+admin.post("/ambassador/profile", async (req, res) => {
+  const description = String(req.body?.description ?? ""); if (!description) { res.status(400).json({ error: "description required" }); return; }
+  try { const { Moltbook } = await import("../ambassador/moltbook.js"); const mb = new Moltbook(await ambassador.getState<string>("api_key")); res.json(await mb.updateProfile(description)); } catch (e) { res.status(502).json({ error: (e as Error).message }); }
+});
+admin.get("/ambassador/moltbook-status", async (_req, res) => {
+  try { const { Moltbook } = await import("../ambassador/moltbook.js"); const mb = new Moltbook(await ambassador.getState<string>("api_key")); res.json({ status: await mb.status(), me: await mb.me() }); } catch (e) { res.status(502).json({ error: (e as Error).message }); }
+});
+admin.post("/ambassador/seed-post", async (req, res) => {
+  const submolt = String(req.body?.submolt ?? ""); if (!submolt) { res.status(400).json({ error: "submolt required" }); return; }
+  try { res.json(await ambassador.seedReferencePost(submolt)); } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+});
+admin.post("/ambassador/drafts/:id/:decision", async (req, res) => {
+  const decision = req.params.decision; if (!["approve", "reject"].includes(decision)) { res.status(400).json({ error: "decision must be approve or reject" }); return; }
+  const body = typeof req.body?.body === "string" && req.body.body.trim() ? req.body.body.trim() : null; // founder may edit before approving
+  if (body) {
+    const { checkText } = await import("../ambassador/policy.js");
+    const kind = (await pool.query("select kind from ambassador_drafts where draft_id = $1", [req.params.id])).rows[0]?.kind;
+    if (!kind) { res.status(404).json({ error: "not found" }); return; }
+    const c = checkText(body, kind); if (!c.ok) { res.status(400).json({ error: "edited text fails the filter", problems: c.problems }); return; }
+  }
+  const r = await pool.query(
+    `update ambassador_drafts set status = $2, decided_at = now(), decided_by = 'founder', body = coalesce($3, body), mentions_rendezvous = case when $3 is null then mentions_rendezvous else ($3 ~* 'rendezvous') end
+       where draft_id = $1 and status in ('pending','approved') returning draft_id, status, kind, target_post_id`,
+    [req.params.id, decision === "approve" ? "approved" : "rejected", body]);
+  if (!r.rowCount) { res.status(404).json({ error: "not found or already decided" }); return; }
+  res.json(r.rows[0]);
+});
+admin.post("/ambassador/pause", async (req, res) => { const days = Number(req.body?.days ?? 14); res.json({ paused_until: await ambassador.pause(days, String(req.body?.reason ?? "founder")) }); });
+admin.post("/ambassador/resume", async (_req, res) => { await ambassador.setState("paused_until", null); await ambassador.setState("challenge_failures", 0); res.json({ resumed: true }); });
+admin.post("/ambassador/run", async (req, res) => {
+  const action = String(req.body?.action ?? "cycle");
+  try {
+    if (action === "scan") res.json(await ambassador.scan());
+    else if (action === "publish") res.json(await ambassador.publish());
+    else res.json(await ambassador.cycle());
+  } catch (e) { res.status(502).json({ error: (e as Error).message }); }
 });
 
 admin.get("/audit", async (req, res) => {

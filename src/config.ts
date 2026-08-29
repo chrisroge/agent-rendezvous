@@ -47,6 +47,12 @@ export const config = {
   stripeFounderPriceId: str("STRIPE_FOUNDER_PRICE_ID", process.env.STRIPE_PRICE_ID ?? ""),
   stripePortalConfigId: str("STRIPE_PORTAL_CONFIG_ID", ""),
   founderPaymentLinkUrl: str("FOUNDER_PAYMENT_LINK_URL", ""),
+  ambassador: {
+    enabled: str("AMBASSADOR_ENABLED", "false") === "true",
+    autoComments: str("AMBASSADOR_AUTO_COMMENTS", "false") === "true",
+    anthropicApiKey: str("ANTHROPIC_API_KEY", ""),
+    intervalMinutes: int("AMBASSADOR_INTERVAL_MINUTES", 180),
+  },
   membership: {
     priceText: str("MEMBERSHIP_PRICE_TEXT", "$5/month"),
     invitationExpiryDays: int("INVITATION_EXPIRY_DAYS", 7),

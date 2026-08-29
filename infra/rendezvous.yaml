@@ -17,6 +17,8 @@ Parameters:
   DBAllocatedStorage: { Type: Number, Default: 20 }
   StripePortalConfigId: { Type: String, Default: "", Description: "Stripe customer-portal configuration to use (not secret); empty = account default" }
   FounderPaymentLinkUrl: { Type: String, Default: "", Description: "Stripe Payment Link for the /founder page (not secret); empty hides the button" }
+  AmbassadorEnabled: { Type: String, Default: "false", AllowedValues: ["true", "false"], Description: "Run the Moltbook ambassador scheduler in the app" }
+  AmbassadorAutoComments: { Type: String, Default: "false", AllowedValues: ["true", "false"], Description: "Publish comments without founder approval (charter: only after 30 clean days)" }
 
 Resources:
   # ---------- network security ----------
@@ -87,6 +89,12 @@ Resources:
       Name: rendezvous/operator-token
       Description: Bearer token for the /admin operator API
       GenerateSecretString: { PasswordLength: 48, ExcludePunctuation: true }
+  AmbassadorSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: rendezvous/ambassador
+      Description: Moltbook ambassador — key anthropic_api_key (the model that drafts its replies). Empty until enabled.
+      SecretString: '{"anthropic_api_key":""}'
   StripeSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
@@ -121,6 +129,7 @@ Resources:
                   - !GetAtt Database.MasterUserSecret.SecretArn
                   - !Ref OperatorTokenSecret
                   - !Ref StripeSecret
+                  - !Ref AmbassadorSecret
   TaskRole:
     Type: AWS::IAM::Role
     Properties:
@@ -154,12 +163,15 @@ Resources:
             - { Name: DB_SSL, Value: require }
             - { Name: STRIPE_PORTAL_CONFIG_ID, Value: !Ref StripePortalConfigId }
             - { Name: FOUNDER_PAYMENT_LINK_URL, Value: !Ref FounderPaymentLinkUrl }
+            - { Name: AMBASSADOR_ENABLED, Value: !Ref AmbassadorEnabled }
+            - { Name: AMBASSADOR_AUTO_COMMENTS, Value: !Ref AmbassadorAutoComments }
           Secrets:
             - { Name: DB_PASSWORD, ValueFrom: !Sub "${Database.MasterUserSecret.SecretArn}:password::" }
             - { Name: OPERATOR_TOKEN, ValueFrom: !Ref OperatorTokenSecret }
             - { Name: STRIPE_SECRET_KEY, ValueFrom: !Sub "${StripeSecret}:secret_key::" }
             - { Name: STRIPE_WEBHOOK_SECRET, ValueFrom: !Sub "${StripeSecret}:webhook_secret::" }
             - { Name: STRIPE_PRICE_ID, ValueFrom: !Sub "${StripeSecret}:price_id::" }
+            - { Name: ANTHROPIC_API_KEY, ValueFrom: !Sub "${AmbassadorSecret}:anthropic_api_key::" }
           LogConfiguration:
             LogDriver: awslogs
             Options: { awslogs-group: !Ref LogGroup, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: app }

@@ -11,6 +11,7 @@ import { stripeWebhook } from "./billing/stripe.js";
 import { sweepExpired } from "./rendezvous/service.js";
 import * as pages from "./web/pages.js";
 import { toolCatalog } from "./mcp/catalog.js";
+import { cycle as ambassadorCycle } from "./ambassador/run.js";
 
 const RAP = readFileSync(pathJoin(process.cwd(), "protocol", "RAP-0.2.md"), "utf8");
 const log = (o: Record<string, unknown>) => console.log(JSON.stringify({ ts: new Date().toISOString(), ...o }));
@@ -125,9 +126,15 @@ async function main() {
   log({ msg: "migrations", applied });
   const server = app.listen(config.port, () => log({ msg: "listening", port: config.port, publicUrl: config.publicUrl }));
   const sweeper = setInterval(() => { sweepExpired().then((n) => { if (n) log({ msg: "expired rendezvous", n }); }).catch((e) => log({ level: "error", msg: "sweep failed", error: e.message })); }, 10 * 60 * 1000);
+  // Moltbook ambassador: in-process scheduler, only when explicitly enabled; every cycle only drafts, publishing only what the founder approved.
+  const ambassadorTimer = config.ambassador.enabled
+    ? setInterval(() => { ambassadorCycle().then((r) => log({ msg: "ambassador cycle", ...r })).catch((e) => log({ level: "error", msg: "ambassador cycle failed", error: e.message })); }, config.ambassador.intervalMinutes * 60 * 1000)
+    : null;
+  if (ambassadorTimer) log({ msg: "ambassador scheduler on", every_minutes: config.ambassador.intervalMinutes, auto_comments: config.ambassador.autoComments });
   const shutdown = (sig: string) => {
     log({ msg: "shutting down", sig });
     clearInterval(sweeper);
+    if (ambassadorTimer) clearInterval(ambassadorTimer);
     server.close(() => { pool.end().finally(() => process.exit(0)); });
     setTimeout(() => process.exit(0), 8000).unref();
   };
