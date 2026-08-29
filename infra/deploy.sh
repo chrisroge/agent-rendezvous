@@ -25,7 +25,7 @@ fi
 echo "== deploying stack $STACK with image $REPO:$TAG"
 aws cloudformation deploy --region "$REGION" --stack-name "$STACK" \
   --template-file infra/rendezvous.yaml \
-  --parameter-overrides "ImageUri=$REPO:$TAG" "DomainName=$DOMAIN" "HostedZoneId=$HOSTED_ZONE_ID" "VpcId=$VPC_ID" "SubnetIds=$SUBNET_IDS" \
+  --parameter-overrides "ImageUri=$REPO:$TAG" "DomainName=$DOMAIN" "HostedZoneId=$HOSTED_ZONE_ID" "VpcId=$VPC_ID" "SubnetIds=$SUBNET_IDS" "StripePortalConfigId=${STRIPE_PORTAL_CONFIG_ID:-}" \
   --capabilities CAPABILITY_IAM \
   --tags Project=rendezvous \
   --no-fail-on-empty-changeset

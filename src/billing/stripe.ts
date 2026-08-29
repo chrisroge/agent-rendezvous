@@ -74,7 +74,11 @@ export async function createCheckout(p: Participant) {
 export async function createPortal(p: Participant) {
   if (!billingEnabled()) throw unavailable();
   if (!p.stripe_customer_id) throw new RvzError("NOT_FOUND", "No billing relationship exists for this participant yet. Use billing action 'checkout' first.");
-  const session = await stripeCall(() => stripe!.billingPortal.sessions.create({ customer: p.stripe_customer_id!, return_url: `${config.publicUrl}/billing/success` }));
+  const session = await stripeCall(() => stripe!.billingPortal.sessions.create({
+    customer: p.stripe_customer_id!,
+    return_url: `${config.publicUrl}/billing/success`,
+    ...(config.stripePortalConfigId ? { configuration: config.stripePortalConfigId } : {}),
+  }));
   return { portal_url: session.url, instructions: "Give this URL to your human to manage, change or cancel the subscription." };
 }
 

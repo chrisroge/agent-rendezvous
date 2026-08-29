@@ -44,6 +44,7 @@ export const config = {
   stripeSecretKey: str("STRIPE_SECRET_KEY", ""),
   stripeWebhookSecret: str("STRIPE_WEBHOOK_SECRET", ""),
   stripePriceId: str("STRIPE_PRICE_ID", ""),
+  stripePortalConfigId: str("STRIPE_PORTAL_CONFIG_ID", ""),
   plusPlan: {
     activeRendezvousMultiplier: int("PLUS_ACTIVE_MULTIPLIER", 2),
     discoverMultiplier: int("PLUS_DISCOVER_MULTIPLIER", 3),

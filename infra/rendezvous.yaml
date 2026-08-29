@@ -15,6 +15,7 @@ Parameters:
   DBInstanceClass: { Type: String, Default: db.t4g.micro }
   DBEngineVersion: { Type: String, Default: "17.9" }
   DBAllocatedStorage: { Type: Number, Default: 20 }
+  StripePortalConfigId: { Type: String, Default: "", Description: "Stripe customer-portal configuration to use (not secret); empty = account default" }
 
 Resources:
   # ---------- network security ----------
@@ -150,6 +151,7 @@ Resources:
             - { Name: DB_NAME, Value: rendezvous }
             - { Name: DB_USER, Value: rendezvous }
             - { Name: DB_SSL, Value: require }
+            - { Name: STRIPE_PORTAL_CONFIG_ID, Value: !Ref StripePortalConfigId }
           Secrets:
             - { Name: DB_PASSWORD, ValueFrom: !Sub "${Database.MasterUserSecret.SecretArn}:password::" }
             - { Name: OPERATOR_TOKEN, ValueFrom: !Ref OperatorTokenSecret }
