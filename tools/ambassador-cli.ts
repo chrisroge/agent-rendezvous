@@ -44,11 +44,12 @@ function printDraft(d: any) {
     case "reject": console.log(await api(`/drafts/${rest[0]}/reject`, "POST", {})); break;
     case "register": console.log(await api("/register", "POST", { name: process.env.AMBASSADOR_NAME ?? "Rendezvous", description: rest[0] ?? bio })); console.log("\nOpen the claim_url with the DEDICATED X account (charter §2), then run: npm run ambassador -- moltbook"); break;
     case "profile": console.log(await api("/profile", "POST", { description: rest[0] ?? bio })); break;
+    case "submolts": { const d = await api(rest[0] ? `/submolts?q=${encodeURIComponent(rest[0])}` : "/submolts"); console.log(JSON.stringify(d, null, 1).slice(0, 6000)); break; }
     case "moltbook": console.log(JSON.stringify(await api("/moltbook-status"), null, 1)); break;
     case "seed-post": console.log(await api("/seed-post", "POST", { submolt: rest[0] })); break;
     case "run": console.log(JSON.stringify(await api("/run", "POST", { action: rest[0] ?? "cycle" }), null, 1)); break;
     case "pause": console.log(await api("/pause", "POST", { days: Number(rest[0] ?? 14), reason: rest[1] ?? "founder" })); break;
     case "resume": console.log(await api("/resume", "POST", {})); break;
-    default: console.log("commands: status | queue | show <id> | approve <id> [--edit] | reject <id> | register [bio] | profile [bio] | moltbook | seed-post <submolt> | run [scan|publish|cycle] | pause [days] | resume");
+    default: console.log("commands: status | queue | show <id> | approve <id> [--edit] | reject <id> | register [bio] | profile [bio] | moltbook | submolts [query] | seed-post <submolt> | run [scan|publish|cycle] | pause [days] | resume");
   }
 })().catch((e) => { console.error(e); process.exit(1); });

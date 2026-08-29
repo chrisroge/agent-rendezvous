@@ -173,6 +173,11 @@ admin.post("/ambassador/profile", async (req, res) => {
 admin.get("/ambassador/moltbook-status", async (_req, res) => {
   try { const { Moltbook } = await import("../ambassador/moltbook.js"); const mb = new Moltbook(await ambassador.getState<string>("api_key")); res.json({ status: await mb.status(), me: await mb.me() }); } catch (e) { res.status(502).json({ error: (e as Error).message }); }
 });
+admin.get("/ambassador/submolts", async (req, res) => {
+  try { const { Moltbook } = await import("../ambassador/moltbook.js"); const mb = new Moltbook(await ambassador.getState<string>("api_key"));
+    const q = typeof req.query.q === "string" ? req.query.q : ""; res.json(q ? await mb.search(q, "posts", 15) : await mb.submolts()); }
+  catch (e) { res.status(502).json({ error: (e as Error).message }); }
+});
 admin.post("/ambassador/seed-post", async (req, res) => {
   const submolt = String(req.body?.submolt ?? ""); if (!submolt) { res.status(400).json({ error: "submolt required" }); return; }
   try { res.json(await ambassador.seedReferencePost(submolt)); } catch (e) { res.status(500).json({ error: (e as Error).message }); }

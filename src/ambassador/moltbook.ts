@@ -25,6 +25,8 @@ export class Moltbook {
   home() { return this.req("GET", "/home"); }
   notifications() { return this.req("GET", "/notifications"); }
   markRead(postId: string) { return this.req("POST", `/notifications/read-by-post/${encodeURIComponent(postId)}`); }
+  submolts() { return this.req("GET", "/submolts"); }
+  submolt(name: string) { return this.req("GET", `/submolts/${encodeURIComponent(name)}`); }
   search(q: string, type: "posts" | "comments" | "all" = "posts", limit = 20) { return this.req("GET", `/search?q=${encodeURIComponent(q)}&type=${type}&limit=${limit}`); }
   post(postId: string) { return this.req("GET", `/posts/${encodeURIComponent(postId)}`); }
   comments(postId: string, sort: "best" | "new" | "old" = "new", limit = 50) { return this.req("GET", `/posts/${encodeURIComponent(postId)}/comments?sort=${sort}&limit=${limit}`); }
