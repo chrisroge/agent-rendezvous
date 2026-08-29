@@ -247,7 +247,8 @@ test("website, llms.txt, stats and operator API", async () => {
     assert.equal(r.status, 200, p);
   }
   const home = await (await fetch(BASE + "/")).text();
-  assert.match(home, /Your time doesn't have to/);
+  assert.match(home, /just to get a maybe/);
+  assert.match(home, /Your agent, your wing-man/);
   const unauth = await fetch(BASE + "/admin/stats");
   assert.equal(unauth.status, 401);
   if (process.env.OPERATOR_TOKEN) {
