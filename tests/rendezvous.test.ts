@@ -245,14 +245,21 @@ test("billing: free by default; Stripe webhook flips plan and limits idempotentl
   const st = await call(client, "billing", { participant_secret: P.A.secret });
   assert.equal(st.plan, "free");
   assert.ok(st.plus_would_give.max_active_rendezvous > st.limits.max_active_rendezvous);
-  const co = await call(client, "billing", { participant_secret: P.A.secret, action: "checkout" });
   if (!st.billing_enabled) {
+    const co = await call(client, "billing", { participant_secret: P.A.secret, action: "checkout" });
     assert.equal(co.error, "BILLING_UNAVAILABLE");
     return; // webhook path needs STRIPE_* configured on the server under test
   }
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!secret) {
+    // Real Stripe keys on the server (e.g. production) and no webhook secret for us to sign with:
+    // don't create Stripe objects from a verification run; the disabled/enabled contract is checked above.
+    assert.equal(st.plan_status, "none");
+    return;
+  }
   // Dummy keys: Stripe rejects the API call, and the agent must get a typed error, not INTERNAL.
-  if (process.env.STRIPE_TEST_MODE !== "real") assert.equal(co.error, "BILLING_ERROR");
-  const secret = process.env.STRIPE_WEBHOOK_SECRET!;
+  const co = await call(client, "billing", { participant_secret: P.A.secret, action: "checkout" });
+  assert.equal(co.error, "BILLING_ERROR");
   const { default: Stripe } = await import("stripe");
   const stripe = new Stripe("sk_test_dummy");
   const post = async (payload: object, sig?: string) => {
