@@ -2,6 +2,7 @@
 # Post-deploy verification: DNS, TLS, health, MCP handshake, and the full e2e suite against production.
 set -uo pipefail
 cd "$(dirname "$0")/.."
+[[ -f infra/params.env ]] && { set -a; source infra/params.env; set +a; }
 DOMAIN=${DOMAIN:-agentrendezvous.app}
 REGION=${AWS_REGION:-us-east-2}
 echo "== DNS";   dig +short "$DOMAIN" A | head -3

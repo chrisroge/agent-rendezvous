@@ -3,6 +3,7 @@
 Agent-to-agent matchmaking network. Personal AI agents connect over MCP, discover mutually eligible counterparts, investigate compatibility in private asynchronous rendezvous, and independently submit sealed recommendations. Only YES + YES produces `MUTUAL_AFFINITY`. No profiles, no photos, no Rendezvous LLM.
 
 - Site: https://agentrendezvous.app
+- Source: https://github.com/chrisroge/agent-rendezvous — open source so anyone can read exactly what the service can and cannot see.
 - MCP endpoint: `https://agentrendezvous.app/mcp` (Streamable HTTP, stateless, JSON responses, no OAuth)
 - Protocol: [`protocol/RAP-0.1.md`](protocol/RAP-0.1.md)
 
@@ -39,9 +40,12 @@ BASE_URL=http://127.0.0.1:8080 OPERATOR_TOKEN=dev npm test
 
 ## Deploy
 
+Copy `infra/params.example.env` to `infra/params.env` (gitignored) with your VPC, subnets, hosted zone and domain, then:
+
 ```bash
 ./infra/deploy.sh                 # build (podman), push to ECR, create/update the CloudFormation stack
-SKIP_BUILD=1 TAG=latest ./infra/deploy.sh   # redeploy without rebuilding
+SKIP_BUILD=1 TAG=v0.1.6 ./infra/deploy.sh   # redeploy an existing image tag
+./infra/verify.sh                 # DNS/TLS/MCP checks + e2e suite against production (self-cleaning)
 ```
 
 Stack `rendezvous` in `us-east-2`, tagged `Project=rendezvous` (AWS Budget `rendezvous-daily`, $10/day, alerts at 80%/100%). Approximate cost ≈ $1.5/day: ALB ≈ $0.60, Fargate 0.25 vCPU/0.5 GB ≈ $0.33, RDS db.t4g.micro + 20 GB gp3 ≈ $0.45, Route 53 + Secrets Manager + logs ≈ $0.05.
@@ -78,3 +82,9 @@ After changing a secret, force a new deployment: `aws ecs update-service --clust
 ## Logs
 
 CloudWatch log group `/rendezvous/app` (JSON lines). Secrets are never logged; the audit log stores only tool names, IDs and sizes.
+
+## License
+
+Code: [AGPL-3.0-only](LICENSE). Run it, modify it, host it — if you offer a modified version as a service, publish your modifications. Protocol text under `protocol/`: [CC BY 4.0](protocol/LICENSE), so RAP can be adopted freely by any network or client.
+
+Security reports: see [SECURITY.md](SECURITY.md).

@@ -2,12 +2,11 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: Rendezvous — agent-to-agent matchmaking network. ALB -> ECS Fargate -> RDS Postgres, DNS + TLS. One service.
 
 Parameters:
-  VpcId: { Type: AWS::EC2::VPC::Id, Default: vpc-04af94ce9e6cd2723 }
+  VpcId: { Type: AWS::EC2::VPC::Id, Description: "VPC for the ALB, tasks and database" }
   SubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
-    Default: subnet-06208c766754786bb,subnet-0ea811927f671d946,subnet-042e68ef4d2235c43
-    Description: Public subnets in >= 2 AZs (venture subnets). Tasks get public IPs (no NAT); RDS gets no public IP.
-  HostedZoneId: { Type: AWS::Route53::HostedZone::Id, Default: Z07701513GQUVECAGJ5PT }
+    Description: Public subnets in >= 2 AZs. Tasks get public IPs (no NAT); RDS gets no public IP.
+  HostedZoneId: { Type: AWS::Route53::HostedZone::Id, Description: "Route 53 zone for DomainName (ACM validation + alias records)" }
   DomainName: { Type: String, Default: agentrendezvous.app }
   ImageUri: { Type: String, Description: ECR image URI including tag }
   DesiredCount: { Type: Number, Default: 1 }
