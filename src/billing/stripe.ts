@@ -19,12 +19,18 @@ export const billingEnabled = () => Boolean(stripe && config.stripeWebhookSecret
 const price = () => config.membership.priceText;
 const unavailable = () => new RvzError("BILLING_UNAVAILABLE", "Membership checkout is not available yet on this network. Registration and watching are free; keep checking status.");
 
+function isStripeError(e: unknown): e is Stripe.errors.StripeError { return typeof e === "object" && e !== null && "type" in e && typeof (e as any).type === "string"; }
+
 async function stripeCall<T>(fn: () => Promise<T>): Promise<T> {
   try { return await fn(); }
   catch (e) {
     const err = e as Stripe.errors.StripeError;
-    console.error(JSON.stringify({ level: "error", msg: "stripe error", type: err.type, code: err.code, message: err.message }));
-    throw new RvzError("BILLING_ERROR", "The billing provider returned an error. Nothing was charged. Try again later.");
+    console.error(JSON.stringify({ level: "error", msg: "stripe error", type: err.type, code: err.code, param: (err as any).param, message: err.message }));
+    const code = err.code ?? err.type ?? "unknown";
+    const transient = ["rate_limit_error", "api_connection_error", "api_error", "lock_timeout"].includes(String(err.type)) || String(err.code) === "lock_timeout";
+    throw new RvzError("BILLING_ERROR", transient
+      ? `The billing provider is temporarily unavailable (${code}). Nothing was charged. Try again in a few minutes.`
+      : `The billing provider rejected the request (${code}). Nothing was charged. This is not something a retry will fix; tell your human and mention the code — the operator can see the full error in the logs.`, { stripe_code: code });
   }
 }
 
@@ -48,9 +54,22 @@ export async function billingStatus(p: Participant) {
   };
 }
 
-/** Create (or reuse) a Stripe customer for this participant. No email, no name — Stripe collects those at checkout. */
+/**
+ * Create (or reuse) a Stripe customer for this participant. No email, no name — Stripe collects those at checkout.
+ * A stored customer that no longer exists on this account (deleted, or created under a previous Stripe account) is reset.
+ */
 async function customerFor(p: Participant): Promise<string> {
-  if (p.stripe_customer_id) return p.stripe_customer_id;
+  if (p.stripe_customer_id) {
+    try {
+      const c = await stripe!.customers.retrieve(p.stripe_customer_id);
+      if (!("deleted" in c && c.deleted)) return p.stripe_customer_id;
+    } catch (e) {
+      if (!(isStripeError(e) && e.code === "resource_missing")) return stripeCall(() => Promise.reject(e));
+    }
+    console.error(JSON.stringify({ level: "warn", msg: "stale stripe customer reset", participant: p.participant_id, customer: p.stripe_customer_id }));
+    await pool.query("update participants set stripe_customer_id = null, stripe_subscription_id = null, stripe_checkout_session_id = null, stripe_checkout_expires_at = null where participant_id = $1 and stripe_customer_id = $2", [p.participant_id, p.stripe_customer_id]);
+    p = { ...p, stripe_customer_id: null, stripe_subscription_id: null, stripe_checkout_session_id: null, stripe_checkout_expires_at: null };
+  }
   const customer = await stripeCall(() => stripe!.customers.create({ metadata: { participant_id: p.participant_id } }));
   await pool.query("update participants set stripe_customer_id = $2 where participant_id = $1 and stripe_customer_id is null", [p.participant_id, customer.id]);
   const r = await pool.query("select stripe_customer_id from participants where participant_id = $1", [p.participant_id]);
@@ -66,6 +85,16 @@ export async function createCheckout(p: Participant) {
     return { resumed: true, instructions: "Your paused membership has been resumed. Call status to confirm." };
   }
   const customer = await customerFor(p);
+  // Reuse the participant's open session rather than minting another payable link on every call.
+  if (p.stripe_checkout_session_id && p.stripe_checkout_expires_at && new Date(p.stripe_checkout_expires_at) > new Date()) {
+    try {
+      const existing = await stripe!.checkout.sessions.retrieve(p.stripe_checkout_session_id);
+      if (existing.status === "open" && existing.url && existing.customer === customer) {
+        return { checkout_url: existing.url, expires_at: existing.expires_at ? new Date(existing.expires_at * 1000).toISOString() : null, reused: true,
+          instructions: "This is the same Checkout link as before (one open session per participant). Give it to your human — never enter payment details yourself." };
+      }
+    } catch { /* not retrievable on this account or already gone: create a fresh one */ }
+  }
   const session = await stripeCall(() => stripe!.checkout.sessions.create({
     mode: "subscription",
     customer,
@@ -77,9 +106,12 @@ export async function createCheckout(p: Participant) {
     success_url: `${config.publicUrl}/billing/success`,
     cancel_url: `${config.publicUrl}/billing/cancel`,
   }));
+  await pool.query("update participants set stripe_checkout_session_id = $2, stripe_checkout_expires_at = $3 where participant_id = $1",
+    [p.participant_id, session.id, session.expires_at ? new Date(session.expires_at * 1000) : null]);
   return {
     checkout_url: session.url,
     expires_at: session.expires_at ? new Date(session.expires_at * 1000).toISOString() : null,
+    reused: false,
     instructions: `Give this URL to your human — never enter payment details yourself. Membership is ${price()}, price locked for founders, charged only while they are searching (collection pauses on withdraw). It activates automatically once Stripe confirms payment; call status afterwards.`,
   };
 }
@@ -87,8 +119,9 @@ export async function createCheckout(p: Participant) {
 export async function createPortal(p: Participant) {
   if (!billingEnabled()) throw unavailable();
   if (!p.stripe_customer_id) throw new RvzError("NOT_FOUND", "No billing relationship exists for this participant yet. Use billing action 'checkout' first.");
+  const customer = await customerFor(p);
   const session = await stripeCall(() => stripe!.billingPortal.sessions.create({
-    customer: p.stripe_customer_id!,
+    customer,
     return_url: `${config.publicUrl}/billing/success`,
     ...(config.stripePortalConfigId ? { configuration: config.stripePortalConfigId } : {}),
   }));
@@ -173,6 +206,7 @@ export async function applyEvent(event: Stripe.Event): Promise<{ duplicate: bool
           const subId = typeof s.subscription === "string" ? s.subscription : s.subscription?.id ?? null;
           if (customerId) await tx.query("update participants set stripe_customer_id = coalesce(stripe_customer_id, $2) where participant_id = $1", [participantId, customerId]);
           applied = await setPlan(tx, participantId, "member", "active", subId, null);
+          await tx.query("update participants set stripe_checkout_session_id = null, stripe_checkout_expires_at = null where participant_id = $1", [participantId]);
           if (applied && subId && viaField && !s.metadata?.participant_id) linkSubscription = { sub: subId, participant: participantId };
         }
         break;

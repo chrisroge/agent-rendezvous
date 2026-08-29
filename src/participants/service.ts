@@ -15,6 +15,8 @@ export interface Participant {
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   stripe_price_id: string | null;
+  stripe_checkout_session_id: string | null;
+  stripe_checkout_expires_at: Date | null;
 }
 
 /** Membership = may participate (discover, open, send, recommend, assess). past_due keeps membership through Stripe's retry window. */
@@ -32,7 +34,7 @@ export async function authenticate(secret: string | undefined, opts: { allowWith
   if (!secret) throw E.unauthenticated();
   if (!/^rv_live_[A-Za-z0-9_-]{20,}$/.test(secret)) throw E.invalidSecret();
   const r = await pool.query<Participant>(
-    "select participant_id, status, created_at, last_seen_at, plan, plan_status, stripe_customer_id, stripe_subscription_id, stripe_price_id from participants where secret_hash = $1",
+    "select participant_id, status, created_at, last_seen_at, plan, plan_status, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_checkout_session_id, stripe_checkout_expires_at from participants where secret_hash = $1",
     [hashSecret(secret)],
   );
   const p = r.rows[0];
