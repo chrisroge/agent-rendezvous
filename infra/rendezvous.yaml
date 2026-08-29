@@ -16,6 +16,7 @@ Parameters:
   DBEngineVersion: { Type: String, Default: "17.9" }
   DBAllocatedStorage: { Type: Number, Default: 20 }
   StripePortalConfigId: { Type: String, Default: "", Description: "Stripe customer-portal configuration to use (not secret); empty = account default" }
+  FounderPaymentLinkUrl: { Type: String, Default: "", Description: "Stripe Payment Link for the /founder page (not secret); empty hides the button" }
 
 Resources:
   # ---------- network security ----------
@@ -152,6 +153,7 @@ Resources:
             - { Name: DB_USER, Value: rendezvous }
             - { Name: DB_SSL, Value: require }
             - { Name: STRIPE_PORTAL_CONFIG_ID, Value: !Ref StripePortalConfigId }
+            - { Name: FOUNDER_PAYMENT_LINK_URL, Value: !Ref FounderPaymentLinkUrl }
           Secrets:
             - { Name: DB_PASSWORD, ValueFrom: !Sub "${Database.MasterUserSecret.SecretArn}:password::" }
             - { Name: OPERATOR_TOKEN, ValueFrom: !Ref OperatorTokenSecret }

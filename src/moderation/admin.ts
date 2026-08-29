@@ -21,6 +21,9 @@ admin.get("/stats", async (_req, res) => {
   const r = await pool.query(`select
     (select count(*) from participants) as participants_total,
     (select count(*) from participants where status = 'active') as participants_active,
+    (select count(*) from participants where status = 'active' and plan = 'member' and plan_status in ('active','past_due','comped')) as members,
+    (select count(*) from participants where plan_status = 'comped') as members_comped,
+    (select count(*) from rendezvous where state = 'OPEN' and kind = 'invitation') as invitations_pending,
     (select count(*) from participants where last_seen_at > created_at + interval '1 day') as participants_returning,
     (select count(*) from match_intents where active) as intents_active,
     (select count(*) from rendezvous) as rendezvous_opened,
@@ -114,6 +117,18 @@ admin.post("/participants/:id/enable", async (req, res) => {
   await pool.query("update participants set status = 'active', disabled_at = null, disabled_reason = null where participant_id = $1 and status = 'disabled'", [req.params.id]);
   await trustEvent(pool, req.params.id, "operator_enabled");
   res.json({ enabled: true });
+});
+
+/** Operator comp: grant or revoke membership without Stripe (seed cohort, experiments, goodwill). */
+admin.post("/participants/:id/membership", async (req, res) => {
+  const action = String(req.body?.action ?? "");
+  if (!["grant", "revoke"].includes(action)) { res.status(400).json({ error: "action must be grant or revoke" }); return; }
+  const r = action === "grant"
+    ? await pool.query("update participants set plan = 'member', plan_status = 'comped', plan_updated_at = now() where participant_id = $1 and plan_status <> 'active' returning plan, plan_status", [req.params.id])
+    : await pool.query("update participants set plan = 'free', plan_status = 'none', plan_updated_at = now() where participant_id = $1 and plan_status = 'comped' returning plan, plan_status", [req.params.id]);
+  if (!r.rowCount) { res.status(409).json({ error: action === "grant" ? "not found, or already a paying member" : "not found, or not a comped membership" }); return; }
+  await trustEvent(pool, req.params.id, action === "grant" ? "membership_comped" : "membership_comp_revoked", { metadata: { reason: req.body?.reason ?? null } });
+  res.json({ participant_id: req.params.id, ...r.rows[0] });
 });
 
 admin.get("/rendezvous/:id", async (req, res) => {

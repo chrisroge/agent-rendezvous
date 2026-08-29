@@ -10,10 +10,16 @@ export interface Participant {
   status: "active" | "withdrawn" | "disabled";
   created_at: Date;
   last_seen_at: Date;
-  plan: "free" | "plus";
-  plan_status: "none" | "active" | "past_due" | "canceled";
+  plan: "free" | "member";
+  plan_status: "none" | "active" | "past_due" | "canceled" | "paused" | "comped";
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
+  stripe_price_id: string | null;
+}
+
+/** Membership = may participate (discover, open, send, recommend, assess). past_due keeps membership through Stripe's retry window. */
+export function isMember(p: Pick<Participant, "plan" | "plan_status">): boolean {
+  return p.plan === "member" && (p.plan_status === "active" || p.plan_status === "past_due" || p.plan_status === "comped");
 }
 
 export async function isNetworkPaused(db: Queryable = pool): Promise<boolean> {
@@ -26,7 +32,7 @@ export async function authenticate(secret: string | undefined, opts: { allowWith
   if (!secret) throw E.unauthenticated();
   if (!/^rv_live_[A-Za-z0-9_-]{20,}$/.test(secret)) throw E.invalidSecret();
   const r = await pool.query<Participant>(
-    "select participant_id, status, created_at, last_seen_at, plan, plan_status, stripe_customer_id, stripe_subscription_id from participants where secret_hash = $1",
+    "select participant_id, status, created_at, last_seen_at, plan, plan_status, stripe_customer_id, stripe_subscription_id, stripe_price_id from participants where secret_hash = $1",
     [hashSecret(secret)],
   );
   const p = r.rows[0];
@@ -167,28 +173,27 @@ export async function countRecent(participantId: string, tool: string, interval:
 
 export async function activeRendezvousCount(participantId: string, db: Queryable = pool): Promise<number> {
   const r = await db.query(
-    "select count(*)::int as n from rendezvous where state = 'OPEN' and (participant_a = $1 or participant_b = $1)",
+    "select count(*)::int as n from rendezvous where state = 'OPEN' and kind = 'rendezvous' and (participant_a = $1 or participant_b = $1)",
     [participantId],
   );
   return r.rows[0].n as number;
 }
 
-/** Operational limits. Trust tier sets the base (anti-abuse); a paid plan multiplies matchmaking capacity, never visibility. */
-export function limitsFor(trustState: string, plan: string = "free") {
+/** Operational limits. Trust tier sets them (anti-abuse and counterparty protection). Membership is the door, not a capacity lever. */
+export function limitsFor(trustState: string) {
   const est = trustState === "ESTABLISHED";
-  const plus = plan === "plus";
-  const m = config.plusPlan;
   return {
-    plan: plus ? "plus" : "free",
-    max_active_rendezvous: (est ? config.limits.establishedMaxActiveRendezvous : config.limits.newMaxActiveRendezvous) * (plus ? m.activeRendezvousMultiplier : 1),
-    discover_per_day: (est ? config.limits.establishedDiscoverPerDay : config.limits.newDiscoverPerDay) * (plus ? m.discoverMultiplier : 1),
-    opens_per_day: config.limits.maxOpensPerDay * (plus ? m.opensMultiplier : 1),
+    max_active_rendezvous: est ? config.limits.establishedMaxActiveRendezvous : config.limits.newMaxActiveRendezvous,
+    discover_per_day: est ? config.limits.establishedDiscoverPerDay : config.limits.newDiscoverPerDay,
+    opens_per_day: config.limits.maxOpensPerDay,
     sends_per_hour: config.limits.maxSendsPerHour,
     max_message_chars: config.limits.maxMessageChars,
     max_messages_per_rendezvous: config.limits.maxMessagesPerRendezvous,
     max_consecutive_messages: config.limits.maxConsecutiveMessages,
     min_messages_each_before_yes: config.limits.minMessagesEachForYes,
     rendezvous_expiry_days: config.limits.rendezvousExpiryDays,
+    invitation_expiry_days: config.membership.invitationExpiryDays,
+    invitations_pending_max: config.membership.invitationsPendingMax,
   };
 }
 

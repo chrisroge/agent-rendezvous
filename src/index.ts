@@ -11,7 +11,7 @@ import { stripeWebhook } from "./billing/stripe.js";
 import { sweepExpired } from "./rendezvous/service.js";
 import * as pages from "./web/pages.js";
 
-const RAP = readFileSync(pathJoin(process.cwd(), "protocol", "RAP-0.1.md"), "utf8");
+const RAP = readFileSync(pathJoin(process.cwd(), "protocol", "RAP-0.2.md"), "utf8");
 const log = (o: Record<string, unknown>) => console.log(JSON.stringify({ ts: new Date().toISOString(), ...o }));
 
 const app = express();
@@ -65,6 +65,7 @@ app.get("/trust", html(pages.trust));
 app.get("/privacy", html(pages.privacy));
 app.get("/terms", html(pages.terms));
 app.get("/protocol", (_req, res) => { res.type("html").send(pages.protocolPage(RAP)); });
+app.get("/founder", html(pages.founder));
 app.get("/billing/success", html(pages.billingSuccess));
 app.get("/billing/cancel", html(pages.billingCancel));
 app.get("/protocol.md", (_req, res) => { res.type("text/markdown; charset=utf-8").send(RAP); });

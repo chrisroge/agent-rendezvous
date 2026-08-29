@@ -3,21 +3,21 @@ import Stripe from "stripe";
 import { pool, withTx } from "../db/pool.js";
 import { config } from "../config.js";
 import { RvzError } from "../errors.js";
-import { limitsFor, type Participant } from "../participants/service.js";
-import { historyFor } from "../trust/evidence.js";
+import { isMember, type Participant } from "../participants/service.js";
 
 /**
- * Billing (PRD §58): free at Day Zero; a paid plan buys matchmaking *work* (more parallel rendezvous, more discovery),
- * never rank, visibility or "who liked you". There is no human account, so the flow is:
- *   agent calls `billing` (checkout) → Stripe Checkout URL tied to participant_id → agent hands URL to its human →
- *   human pays on Stripe → webhook flips participant.plan. We store only opaque Stripe IDs; never card or email.
+ * Membership billing. One tier: Founder membership (price locked). Free to register and watch; membership to search and talk.
+ * There is no human account, so the flow is: agent calls `billing` (checkout) → Stripe Checkout URL tied to participant_id →
+ * agent hands the URL to its human → human pays on Stripe → webhook sets participants.plan. Humans can also pay directly via
+ * the /founder Payment Link, entering their participant_id as a custom field. We store only opaque Stripe IDs; never card or email.
+ * Collection is paused while a participant is withdrawn and resumed on rejoin: you pay only while your agent is searching.
  * Everything here is inert until STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET and STRIPE_PRICE_ID are configured.
  */
 const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey) : null;
 
 export const billingEnabled = () => Boolean(stripe && config.stripeWebhookSecret && config.stripePriceId);
-
-const unavailable = () => new RvzError("BILLING_UNAVAILABLE", "Rendezvous is free during the Day-Zero network. Paid plans are not available yet; your current limits apply.");
+const price = () => config.membership.priceText;
+const unavailable = () => new RvzError("BILLING_UNAVAILABLE", "Membership checkout is not available yet on this network. Registration and watching are free; keep checking status.");
 
 async function stripeCall<T>(fn: () => Promise<T>): Promise<T> {
   try { return await fn(); }
@@ -28,15 +28,23 @@ async function stripeCall<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+export function membershipView(p: Participant) {
+  return {
+    active: isMember(p),
+    status: p.plan_status,
+    founding_member: isMember(p) && !!p.stripe_price_id && p.stripe_price_id === config.stripeFounderPriceId,
+    price: price(),
+    price_locked_for_founders: true,
+    pay_only_while_searching: true,
+  };
+}
+
 export async function billingStatus(p: Participant) {
-  const history = await historyFor(p.participant_id);
   return {
     billing_enabled: billingEnabled(),
-    plan: p.plan,
-    plan_status: p.plan_status,
-    limits: limitsFor(history.trust_state, p.plan),
-    plus_would_give: limitsFor(history.trust_state, "plus"),
-    principles: "Paid plans buy matchmaking work (parallel rendezvous, discovery, opens). They never buy ranking, visibility, or information about who liked whom.",
+    membership: membershipView(p),
+    founder_page: `${config.publicUrl}/founder`,
+    principles: "Membership is the door: it lets you search and talk. It never buys ranking, visibility, or information about who liked whom, and it is not visible to other participants. Registering, watching, reading invitations in full, and declining are always free. Collection pauses while you are withdrawn.",
   };
 }
 
@@ -51,7 +59,12 @@ async function customerFor(p: Participant): Promise<string> {
 
 export async function createCheckout(p: Participant) {
   if (!billingEnabled()) throw unavailable();
-  if (p.plan === "plus" && p.plan_status === "active") throw new RvzError("CONFLICT", "This participant is already on Plus. Use billing action 'portal' to manage the subscription.");
+  if (isMember(p)) throw new RvzError("CONFLICT", "This participant is already a member. Use billing action 'portal' to manage the subscription.");
+  if (p.plan_status === "paused" && p.stripe_subscription_id) {
+    // A withdrawn-then-rejoined member whose resume failed: resume rather than create a second subscription.
+    await resumeCollection(p);
+    return { resumed: true, instructions: "Your paused membership has been resumed. Call status to confirm." };
+  }
   const customer = await customerFor(p);
   const session = await stripeCall(() => stripe!.checkout.sessions.create({
     mode: "subscription",
@@ -67,7 +80,7 @@ export async function createCheckout(p: Participant) {
   return {
     checkout_url: session.url,
     expires_at: session.expires_at ? new Date(session.expires_at * 1000).toISOString() : null,
-    instructions: "Give this URL to your human. Never enter payment details yourself. The plan activates automatically once Stripe confirms payment; call billing (status) or status afterwards to see the new limits.",
+    instructions: `Give this URL to your human — never enter payment details yourself. Membership is ${price()}, price locked for founders, charged only while they are searching (collection pauses on withdraw). It activates automatically once Stripe confirms payment; call status afterwards.`,
   };
 }
 
@@ -79,49 +92,88 @@ export async function createPortal(p: Participant) {
     return_url: `${config.publicUrl}/billing/success`,
     ...(config.stripePortalConfigId ? { configuration: config.stripePortalConfigId } : {}),
   }));
-  return { portal_url: session.url, instructions: "Give this URL to your human to manage, change or cancel the subscription." };
+  return { portal_url: session.url, instructions: "Give this URL to your human to manage, change or cancel the membership." };
+}
+
+/** Withdraw → stop charging. Best effort: a Stripe failure must not block the withdrawal; the operator sees it in the logs. */
+export async function pauseCollection(p: Participant): Promise<boolean> {
+  if (!stripe || !p.stripe_subscription_id || !(p.plan_status === "active" || p.plan_status === "past_due")) return false;
+  try {
+    await stripe.subscriptions.update(p.stripe_subscription_id, { pause_collection: { behavior: "void" } });
+    await pool.query("update participants set plan_status = 'paused', plan_updated_at = now() where participant_id = $1", [p.participant_id]);
+    return true;
+  } catch (e) {
+    console.error(JSON.stringify({ level: "error", msg: "pause_collection failed", participant: p.participant_id, error: (e as Error).message }));
+    return false;
+  }
+}
+
+/** Rejoin → resume charging. */
+export async function resumeCollection(p: Participant): Promise<boolean> {
+  if (!stripe || !p.stripe_subscription_id || p.plan_status !== "paused") return false;
+  try {
+    await stripe.subscriptions.update(p.stripe_subscription_id, { pause_collection: null as unknown as undefined });
+    await pool.query("update participants set plan = 'member', plan_status = 'active', plan_updated_at = now() where participant_id = $1", [p.participant_id]);
+    return true;
+  } catch (e) {
+    console.error(JSON.stringify({ level: "error", msg: "resume collection failed", participant: p.participant_id, error: (e as Error).message }));
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
 // Webhook
 
-function planFromSubscriptionStatus(status: Stripe.Subscription.Status): { plan: "free" | "plus"; plan_status: Participant["plan_status"] } {
-  switch (status) {
-    case "active": case "trialing": return { plan: "plus", plan_status: "active" };
-    case "past_due": case "unpaid": case "incomplete": return { plan: "plus", plan_status: "past_due" };
-    default: return { plan: "free", plan_status: "canceled" }; // canceled, incomplete_expired, paused
+function planFromSubscription(sub: Stripe.Subscription): { plan: "free" | "member"; plan_status: Participant["plan_status"] } {
+  if (sub.pause_collection) return { plan: "member", plan_status: "paused" };
+  switch (sub.status) {
+    case "active": case "trialing": return { plan: "member", plan_status: "active" };
+    case "past_due": case "unpaid": case "incomplete": return { plan: "member", plan_status: "past_due" };
+    case "paused": return { plan: "member", plan_status: "paused" };
+    default: return { plan: "free", plan_status: "canceled" }; // canceled, incomplete_expired
   }
 }
 
-async function setPlan(tx: { query: typeof pool.query }, participantId: string, plan: "free" | "plus", planStatus: Participant["plan_status"], subscriptionId: string | null) {
-  await tx.query(
-    "update participants set plan = $2, plan_status = $3, stripe_subscription_id = coalesce($4, stripe_subscription_id), plan_updated_at = now() where participant_id = $1",
-    [participantId, plan, planStatus, subscriptionId],
+type Tx = { query: typeof pool.query };
+
+async function setPlan(tx: Tx, participantId: string, plan: "free" | "member", planStatus: Participant["plan_status"], subscriptionId: string | null, priceId: string | null): Promise<boolean> {
+  const r = await tx.query(
+    `update participants set plan = $2, plan_status = $3, stripe_subscription_id = coalesce($4, stripe_subscription_id),
+       stripe_price_id = coalesce($5, stripe_price_id), plan_updated_at = now() where participant_id = $1`,
+    [participantId, plan, planStatus, subscriptionId, priceId],
   );
+  return (r.rowCount ?? 0) > 0;
 }
 
-async function participantForCustomer(tx: { query: typeof pool.query }, customerId: string | null | undefined): Promise<string | null> {
+async function participantForCustomer(tx: Tx, customerId: string | null | undefined): Promise<string | null> {
   if (!customerId) return null;
   const r = await tx.query("select participant_id from participants where stripe_customer_id = $1", [customerId]);
   return (r.rows[0]?.participant_id as string | undefined) ?? null;
 }
 
-/** Apply one verified event. Returns the participant it touched, if any. Idempotent by event id (billing_events PK). */
+function customFieldParticipant(s: Stripe.Checkout.Session): string | null {
+  const f = (s.custom_fields ?? []).find((x) => x.key === "participant_id");
+  const v = f?.text?.value?.trim();
+  return v && /^pt_[0-9A-Z]{20,32}$/.test(v) ? v : null;
+}
+
+/** Apply one verified event. Idempotent by event id (billing_events PK). */
 export async function applyEvent(event: Stripe.Event): Promise<{ duplicate: boolean; participant_id: string | null; applied: boolean }> {
-  return withTx(async (tx) => {
+  const result = await withTx(async (tx) => {
     const ins = await tx.query("insert into billing_events(event_id, event_type, payload) values ($1,$2,$3) on conflict do nothing", [event.id, event.type, JSON.stringify(event)]);
-    if (!ins.rowCount) return { duplicate: true, participant_id: null, applied: false };
-    let participantId: string | null = null, applied = false;
+    if (!ins.rowCount) return { duplicate: true, participant_id: null, applied: false, linkSubscription: null as null | { sub: string; participant: string } };
+    let participantId: string | null = null, applied = false, linkSubscription: null | { sub: string; participant: string } = null;
     switch (event.type) {
       case "checkout.session.completed": {
         const s = event.data.object as Stripe.Checkout.Session;
-        participantId = (s.metadata?.participant_id ?? s.client_reference_id ?? null) || (await participantForCustomer(tx, typeof s.customer === "string" ? s.customer : s.customer?.id));
+        const customerId = typeof s.customer === "string" ? s.customer : s.customer?.id ?? null;
+        const viaField = customFieldParticipant(s);
+        participantId = (s.metadata?.participant_id ?? s.client_reference_id ?? null) || viaField || (await participantForCustomer(tx, customerId));
         if (participantId && s.mode === "subscription") {
           const subId = typeof s.subscription === "string" ? s.subscription : s.subscription?.id ?? null;
-          const customerId = typeof s.customer === "string" ? s.customer : s.customer?.id ?? null;
           if (customerId) await tx.query("update participants set stripe_customer_id = coalesce(stripe_customer_id, $2) where participant_id = $1", [participantId, customerId]);
-          await setPlan(tx, participantId, "plus", "active", subId);
-          applied = true;
+          applied = await setPlan(tx, participantId, "member", "active", subId, null);
+          if (applied && subId && viaField && !s.metadata?.participant_id) linkSubscription = { sub: subId, participant: participantId };
         }
         break;
       }
@@ -131,9 +183,9 @@ export async function applyEvent(event: Stripe.Event): Promise<{ duplicate: bool
         const sub = event.data.object as Stripe.Subscription;
         participantId = sub.metadata?.participant_id || (await participantForCustomer(tx, typeof sub.customer === "string" ? sub.customer : sub.customer?.id));
         if (participantId) {
-          const { plan, plan_status } = event.type === "customer.subscription.deleted" ? { plan: "free" as const, plan_status: "canceled" as const } : planFromSubscriptionStatus(sub.status);
-          await setPlan(tx, participantId, plan, plan_status, sub.id);
-          applied = true;
+          const priceId = sub.items?.data?.[0]?.price?.id ?? null;
+          const { plan, plan_status } = event.type === "customer.subscription.deleted" ? { plan: "free" as const, plan_status: "canceled" as const } : planFromSubscription(sub);
+          applied = await setPlan(tx, participantId, plan, plan_status, sub.id, priceId);
         }
         break;
       }
@@ -141,8 +193,15 @@ export async function applyEvent(event: Stripe.Event): Promise<{ duplicate: bool
         break; // recorded, not acted on
     }
     await tx.query("update billing_events set participant_id = $2, applied = $3 where event_id = $1", [event.id, participantId, applied]);
-    return { duplicate: false, participant_id: participantId, applied };
+    return { duplicate: false, participant_id: participantId, applied, linkSubscription };
   });
+  // Payment-link purchases carry the participant only in a custom field: tag the subscription so later events map without a customer lookup.
+  if (result.linkSubscription && stripe) {
+    stripe.subscriptions.update(result.linkSubscription.sub, { metadata: { participant_id: result.linkSubscription.participant } })
+      .catch((e) => console.error(JSON.stringify({ level: "error", msg: "subscription metadata link failed", error: (e as Error).message })));
+  }
+  const { linkSubscription: _l, ...out } = result;
+  return out;
 }
 
 export async function stripeWebhook(req: Request, res: Response): Promise<void> {

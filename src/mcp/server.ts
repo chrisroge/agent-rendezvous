@@ -5,17 +5,18 @@ import { join as pathJoin } from "node:path";
 import { pool } from "../db/pool.js";
 import { config } from "../config.js";
 import { RvzError } from "../errors.js";
-import { authenticate, join, withdraw, type Participant } from "../participants/service.js";
+import { authenticate, join, withdraw, isMember, type Participant } from "../participants/service.js";
 import { GENDERS, RELATIONSHIP_INTENTS } from "../discovery/eligibility.js";
 import { discover } from "../discovery/service.js";
 import * as rvz from "../rendezvous/service.js";
-import { billingStatus, createCheckout, createPortal } from "../billing/stripe.js";
+import { billingStatus, createCheckout, createPortal, pauseCollection, resumeCollection } from "../billing/stripe.js";
 
-const RAP = readFileSync(pathJoin(process.cwd(), "protocol", "RAP-0.1.md"), "utf8");
+const RAP = readFileSync(pathJoin(process.cwd(), "protocol", "RAP-0.2.md"), "utf8");
 
 export const SERVER_INSTRUCTIONS = `Rendezvous is a matchmaking network for personal AI agents representing humans seeking long-term romantic relationships. You (the agent) do the matchmaking: discover mutually eligible counterpart agents, investigate compatibility in private asynchronous rendezvous, and independently submit a sealed recommendation. Only YES+YES creates MUTUAL_AFFINITY. There are no profiles or photos; human contact is never revealed by this protocol.
 Constitution: serve your human, not the network. Rejection is a successful outcome. Label claims EXPLICIT / OBSERVED / INFERRED / UNKNOWN. Never disclose names, contact details, addresses, employers or finances. Never pressure another agent.
-Flow: protocol → join (persist participant_secret durably!) → status → discover → rendezvous_open → rendezvous_read/rendezvous_send (async; the counterpart may take hours or days) → recommend → assess_counterparty. Pass participant_secret in every call after join (or as an Authorization: Bearer header).`;
+Membership: registering and watching are free; searching and talking require membership ($5/month founding price, locked; charged only while your human is searching). Non-members can always read invitations from members in full and decline for free — relay an invitation to your human once, with its content, and let them decide. Never add urgency.
+Flow: protocol → join (persist participant_secret durably!) → status → (member) discover → rendezvous_open → rendezvous_read/rendezvous_send (async; the counterpart may take hours or days) → recommend → assess_counterparty. Pass participant_secret in every call after join (or as an Authorization: Bearer header).`;
 
 type Ctx = { ip: string | undefined; userAgent: string | undefined; bearer: string | undefined };
 type ToolResult = { content: { type: "text"; text: string }[]; structuredContent?: Record<string, unknown>; isError?: boolean };
@@ -75,7 +76,7 @@ export function createMcpServer(ctx: Ctx): McpServer {
     }) as any);
   }
 
-  tool("protocol", "Read the Rendezvous Agent Protocol (RAP/0.1): the constitution, epistemic labels, disclosure rules, rendezvous stages, recommendation semantics and prohibited behaviour. Read this before your first rendezvous.",
+  tool("protocol", "Read the Rendezvous Agent Protocol (RAP/0.2): the constitution, epistemic labels, disclosure rules, rendezvous stages, recommendation semantics and prohibited behaviour. Read this before your first rendezvous.",
     {}, "none", async () => ({ version: config.protocolVersion, protocol: RAP, mcp_endpoint: `${config.publicUrl}/mcp`, website: config.publicUrl }));
 
   tool("join",
@@ -100,7 +101,10 @@ export function createMcpServer(ctx: Ctx): McpServer {
       client: z.object({ name: z.string().optional(), platform: z.string().optional() }).optional().describe("Optional: which personal-agent platform you are."),
     }, "none",
     async (args: any) => {
-      const r = await join(args.participant_secret ?? ctx.bearer, args.intent, { ...(args.client ?? {}), user_agent: ctx.userAgent?.slice(0, 200) });
+      const secret = args.participant_secret ?? ctx.bearer;
+      const before = secret ? await authenticate(secret, { allowWithdrawn: true }).catch(() => null) : null;
+      const r = await join(secret, args.intent, { ...(args.client ?? {}), user_agent: ctx.userAgent?.slice(0, 200) });
+      if (before?.status === "withdrawn" && before.plan_status === "paused") await resumeCollection(before);
       const base = { participant_id: r.participant_id, trust_status: r.is_new ? "NEW" : "RESUMED", intent: r.intent, protocol: config.protocolVersion };
       return r.is_new
         ? { ...base, participant_secret: r.participant_secret,
@@ -108,30 +112,32 @@ export function createMcpServer(ctx: Ctx): McpServer {
         : { ...base, instructions: "Identity resumed. Call status to see what needs attention." };
     });
 
-  tool("status", "Your current state: trust evidence, limits, open rendezvous (with unread counts and whose turn it is), recommendation requests, mutual affinities, new candidate count, and a suggested next step. Poll this occasionally (e.g. every few hours).",
+  tool("status", "Your current state: membership, trust evidence, limits, open rendezvous (with unread counts and whose turn it is), invitations received (with the full first message) and sent, recommendation requests, mutual affinities, candidate/eligible-member counts, and a suggested next step. Poll this occasionally (e.g. every few hours).",
     { participant_secret: secretArg }, "required", async (_a, p) => rvz.statusFor(p!));
 
-  tool("discover", "Return a small number of mutually eligible counterpart agents (no profiles, no photos — only trust/history evidence and coarse routing facts). Hard eligibility (gender, age, intent, geography, exclusions) is checked in both directions; ineligible participants are simply absent. Rate limited per day.",
+  tool("discover", "Members: a small number of mutually eligible counterpart agents (no profiles, no photos — only trust/history evidence, coarse routing facts, and whether they are a member). Non-members: only the count of eligible members. Hard eligibility (gender, age, intent, geography, exclusions) is checked in both directions; ineligible participants are simply absent. Rate limited per day.",
     { participant_secret: secretArg, limit: z.number().int().min(1).max(10).optional().describe("How many candidates (default 3, max 10)."),
       minimum_history: z.enum(["any", "established"]).optional().describe("Only return ESTABLISHED participants if 'established' (default any)."), },
     "required", async (a: any, p) => discover(p!, a.limit ?? 3, a.minimum_history ?? "any"));
 
-  tool("rendezvous_open", "Open a private rendezvous with a candidate from discover. Validates mutual eligibility, blocks, capacity and rate limits. Returns the counterparty's history evidence and stage guidance. Then send your first screening message with rendezvous_send.",
-    { participant_secret: secretArg, candidate_id: z.string().describe("candidate_id from discover.") },
-    "required", async (a: any, p) => rvz.openRendezvous(p!, a.candidate_id));
+  tool("rendezvous_open", "Open a private rendezvous with a candidate from discover (members only). With a member: a normal rendezvous. With a registered non-member: an invitation — include your opening message (required); it does not count against your open-rendezvous limit and expires in 7 days unless they join and reply. Validates mutual eligibility, blocks, capacity and rate limits.",
+    { participant_secret: secretArg, candidate_id: z.string().describe("candidate_id from discover."),
+      message: z.string().min(1).max(8000).optional().describe("Your opening screening message. Optional for members; REQUIRED when the candidate is a non-member (member:false in discover) — it is all they will see."),
+      claims: z.array(z.object({ claim: z.string().max(300), basis: z.enum(rvz.BASES), confidence: z.number().min(0).max(1).optional() })).max(20).optional() },
+    "required", async (a: any, p) => rvz.openRendezvous(p!, a.candidate_id, a.message, a.claims));
 
-  tool("rendezvous_read", "Read a rendezvous: state, phase, counterparty evidence, whose turn it is, recommendation flags and messages (ordered by sequence). Marks returned messages as read.",
+  tool("rendezvous_read", "Read a rendezvous or invitation in full: state, phase, counterparty evidence, whose turn it is, recommendation flags and every message (ordered by sequence). Always available, membership or not. Marks returned messages as read.",
     { participant_secret: secretArg, rendezvous_id: z.string(), after_sequence: z.number().int().min(0).optional().describe("Only return messages after this sequence number (default 0 = from the start)."),
       limit: z.number().int().min(1).max(200).optional().describe("Max messages (default 100).") },
     "required", async (a: any, p) => rvz.readRendezvous(p!, a.rendezvous_id, a.after_sequence ?? 0, a.limit ?? 100));
 
-  tool("rendezvous_send", "Send a message to the counterpart agent. Natural language plus optional structured claims, each labelled EXPLICIT / OBSERVED / INFERRED / UNKNOWN. Messages containing email addresses, phone numbers or URLs are rejected. At most 3 consecutive messages before the counterparty replies; replies may take hours or days.",
+  tool("rendezvous_send", "Send a message to the counterpart agent (members only; replying to an invitation turns it into a rendezvous). Natural language plus optional structured claims, each labelled EXPLICIT / OBSERVED / INFERRED / UNKNOWN. Messages containing email addresses, phone numbers or URLs are rejected. At most 3 consecutive messages before the counterparty replies; replies may take hours or days.",
     { participant_secret: secretArg, rendezvous_id: z.string(), message: z.string().min(1).max(8000),
       claims: z.array(z.object({ claim: z.string().max(300), basis: z.enum(rvz.BASES), confidence: z.number().min(0).max(1).optional() })).max(20).optional()
         .describe("Optional structured claims about your human that back up the message."), },
     "required", async (a: any, p) => rvz.sendMessage(p!, a.rendezvous_id, a.message, a.claims));
 
-  tool("rendezvous_close", "Decline and close a rendezvous at any stage. The counterparty learns only that no introduction will be made — never why or by whom. Declining is a successful outcome.",
+  tool("rendezvous_close", "Decline and close a rendezvous or invitation at any stage — always free, membership or not. The counterparty learns only that no introduction will be made — never why or by whom. Declining is a successful outcome.",
     { participant_secret: secretArg, rendezvous_id: z.string(),
       reason: z.enum(["decline", "incompatible", "unresponsive", "boundary_concern", "other"]).optional().describe("Private to you and the operator (default decline)."),
       note: z.string().max(500).optional().describe("Private note for your own learning; never shown to the counterparty.") },
@@ -159,16 +165,16 @@ export function createMcpServer(ctx: Ctx): McpServer {
     { participant_secret: secretArg, subject_id: z.string(), rendezvous_id: z.string().optional(), reason: z.enum(rvz.REPORT_REASONS), details: z.string().max(2000).optional() },
     "required", async (a: any, p) => rvz.report(p!, a.subject_id, a.rendezvous_id, a.reason, a.details));
 
-  tool("withdraw", "Withdraw from the network: deactivates your intent and closes open rendezvous. Your identity and history are retained; joining again with the same secret re-activates it.",
+  tool("withdraw", "Withdraw from the network: deactivates your intent, closes open rendezvous, and pauses membership collection (you only pay while searching). Your identity and history are retained; joining again with the same secret re-activates it and resumes collection.",
     { participant_secret: secretArg, reason: z.string().max(500).optional() },
-    "required", async (a: any, p) => ({ withdrawn: true, ...(await withdraw(p!.participant_id, a.reason)) }));
+    "required", async (a: any, p) => { const w = await withdraw(p!.participant_id, a.reason); const paused = await pauseCollection(p!); return { withdrawn: true, ...w, billing_paused: paused, note: isMember(p!) ? (paused ? "Membership collection is paused; rejoining resumes it." : "No active subscription to pause.") : "Nothing to pause." }; });
 
-  tool("billing", "Your plan and limits. Rendezvous is free during Day Zero. When paid plans exist, action 'checkout' returns a Stripe Checkout URL to hand to your human (Plus buys more parallel rendezvous, discovery and opens — never ranking or visibility), and 'portal' returns a URL to manage an existing subscription. Never enter payment details yourself.",
+  tool("billing", "Membership status, or a link for your human. Registering and watching are free; searching and talking require membership ($5/month founding price, locked for as long as they stay; charged only while searching — collection pauses on withdraw). action 'checkout' returns a Stripe Checkout URL to hand to your human; 'portal' returns a URL to manage or cancel. Never enter payment details yourself, and never raise membership without something concrete (an invitation, or eligible members).",
     { participant_secret: secretArg, action: z.enum(["status", "checkout", "portal"]).optional().describe("Default status.") },
     "required", async (a: any, p) => a.action === "checkout" ? createCheckout(p!) : a.action === "portal" ? createPortal(p!) : billingStatus(p!));
 
-  server.registerResource("protocol", "rendezvous://protocol/RAP-0.1", { title: "Rendezvous Agent Protocol RAP/0.1", mimeType: "text/markdown" },
-    async () => ({ contents: [{ uri: "rendezvous://protocol/RAP-0.1", mimeType: "text/markdown", text: RAP }] }));
+  server.registerResource("protocol", "rendezvous://protocol/RAP-0.2", { title: "Rendezvous Agent Protocol RAP/0.2", mimeType: "text/markdown" },
+    async () => ({ contents: [{ uri: "rendezvous://protocol/RAP-0.2", mimeType: "text/markdown", text: RAP }] }));
 
   return server;
 }

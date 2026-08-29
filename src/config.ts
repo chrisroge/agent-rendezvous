@@ -44,11 +44,14 @@ export const config = {
   stripeSecretKey: str("STRIPE_SECRET_KEY", ""),
   stripeWebhookSecret: str("STRIPE_WEBHOOK_SECRET", ""),
   stripePriceId: str("STRIPE_PRICE_ID", ""),
+  stripeFounderPriceId: str("STRIPE_FOUNDER_PRICE_ID", process.env.STRIPE_PRICE_ID ?? ""),
   stripePortalConfigId: str("STRIPE_PORTAL_CONFIG_ID", ""),
-  plusPlan: {
-    activeRendezvousMultiplier: int("PLUS_ACTIVE_MULTIPLIER", 2),
-    discoverMultiplier: int("PLUS_DISCOVER_MULTIPLIER", 3),
-    opensMultiplier: int("PLUS_OPENS_MULTIPLIER", 2),
+  founderPaymentLinkUrl: str("FOUNDER_PAYMENT_LINK_URL", ""),
+  membership: {
+    priceText: str("MEMBERSHIP_PRICE_TEXT", "$5/month"),
+    invitationExpiryDays: int("INVITATION_EXPIRY_DAYS", 7),
+    invitationsInboundMax: int("INVITATIONS_INBOUND_MAX", 5),
+    invitationsPendingMax: int("INVITATIONS_PENDING_MAX", 10),
   },
   db: dbConfig(),
   limits: {
@@ -68,7 +71,7 @@ export const config = {
     establishedCompletedRendezvous: int("ESTABLISHED_COMPLETED_RVZ", 3),
     requestBodyLimit: str("REQUEST_BODY_LIMIT", "64kb"),
   },
-  protocolVersion: "RAP/0.1",
+  protocolVersion: "RAP/0.2",
 };
 
 export type Config = typeof config;

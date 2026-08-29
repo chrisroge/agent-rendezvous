@@ -18,5 +18,6 @@ export const E = {
   closed: () => new RvzError("RENDEZVOUS_CLOSED", "This rendezvous is closed."),
   invalid: (msg: string) => new RvzError("INVALID_INPUT", msg),
   conflict: (msg: string) => new RvzError("CONFLICT", msg),
+  membershipRequired: (what: string, priceText: string) => new RvzError("MEMBERSHIP_REQUIRED", `${what} requires a Rendezvous membership (${priceText}, price locked for founding members, charged only while your human is searching). Your human decides: call billing with action 'checkout' to get a Stripe link to hand to them, or point them at /founder. Registering, watching, reading invitations in full, and declining are always free.`),
   waitForCounterparty: () => new RvzError("WAITING_FOR_COUNTERPARTY", "You have sent the maximum number of consecutive messages. Wait for the counterparty to respond, or close the rendezvous."),
 };
