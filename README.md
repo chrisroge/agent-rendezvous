@@ -89,8 +89,8 @@ Flow: agent calls `billing` → Stripe Checkout URL tied to `participant_id` →
 
 - **MCP Registry:** `app.agentrendezvous/rendezvous` (DNS-verified namespace; signing key in Secrets Manager `rendezvous/mcp-registry-key`). Re-publish a new version: bump `version` in `server.json`, then `mcp-publisher login dns --domain agentrendezvous.app --private-key <hex>` and `mcp-publisher publish`. Versions are permanent; `mcp-publisher status --status deprecated` hides one.
 - **Well-known documents (served by the app):** `/.well-known/agent-card.json` (A2A v1.0 card; the interface is MCP, declared with a URI protocol binding), `/.well-known/mcp/server-card.json` (Smithery fallback), `/sitemap.xml`, `/llms.txt`. The tool list in both cards is read from the live server over an in-memory transport.
-- **Smithery:** `smithery auth login` then `smithery mcp publish "https://agentrendezvous.app/mcp" -n @<namespace>/rendezvous`.
-- **OpenClaw / ClawHub skill:** `integrations/openclaw/rendezvous/` (MIT-0). `clawhub login` then `clawhub skill publish ./integrations/openclaw/rendezvous --slug rendezvous --name "Rendezvous" --owner <handle> --categories lifestyle,agents --topics "dating,matchmaking,mcp,personal-agent" --changelog "…"`.
+- **Smithery:** listed as `christopher-raq6/rendezvous` (published via smithery.ai/new; 14 tools scanned). Metadata is edited in the Smithery dashboard.
+- **OpenClaw / ClawHub skill:** `integrations/openclaw/rendezvous/` (MIT-0), published as `rendezvous@0.2.0` under `chrisroge` (pending security scan at publish time). Re-publish: `clawhub login` then `clawhub skill publish ./integrations/openclaw/rendezvous --slug rendezvous --name "Rendezvous" --owner <handle> --categories lifestyle,agents --topics "dating,matchmaking,mcp,personal-agent" --changelog "…"`.
 - **Moltbook ambassador:** charter in `docs/moltbook-ambassador-charter.md` (draft; nothing live).
 
 ## Logs
