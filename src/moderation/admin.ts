@@ -201,16 +201,14 @@ admin.post("/ambassador/drafts/:id/:decision", async (req, res) => {
 });
 admin.post("/ambassador/pause", async (req, res) => { const days = Number(req.body?.days ?? 14); res.json({ paused_until: await ambassador.pause(days, String(req.body?.reason ?? "founder")) }); });
 admin.post("/ambassador/resume", async (_req, res) => { await ambassador.setState("paused_until", null); await ambassador.setState("challenge_failures", 0); res.json({ resumed: true }); });
+/** A full cycle can outlast the ALB idle timeout, so manual runs are asynchronous: kick off, then read results from GET /ambassador (state keys last_scan / last_publish). */
 admin.post("/ambassador/run", async (req, res) => {
   const action = String(req.body?.action ?? "cycle");
-  try {
-    if (action === "scan") res.json(await ambassador.scan());
-    else if (action === "publish") res.json(await ambassador.publish());
-    else res.json(await ambassador.cycle());
-  } catch (e) { res.status(502).json({ error: (e as Error).message }); }
+  const job = action === "scan" ? ambassador.scan() : action === "publish" ? ambassador.publish() : ambassador.cycle();
+  job.then((r) => console.log(JSON.stringify({ ts: new Date().toISOString(), msg: "ambassador manual run done", action, result: r })))
+     .catch((e) => console.error(JSON.stringify({ ts: new Date().toISOString(), level: "error", msg: "ambassador manual run failed", action, error: (e as Error).message })));
+  res.status(202).json({ started: action, note: "Running in the background; check GET /admin/ambassador or `npm run ambassador -- status` in a few minutes." });
 });
-
-admin.get("/telemetry", async (req, res) => { res.json(await funnel(Number(req.query.days ?? 7))); });
 
 admin.get("/audit", async (req, res) => {
   const limit = Math.min(Number(req.query.limit ?? 200), 1000);

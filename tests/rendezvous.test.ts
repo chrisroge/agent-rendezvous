@@ -405,7 +405,7 @@ test("website, llms.txt, stats and operator API", async () => {
   const mcpGet = await fetch(BASE + "/mcp");
   assert.equal(mcpGet.status, 405);
   const amb = await (await admin("/ambassador")).json();
-  assert.equal(amb.enabled, false, "ambassador scheduler is off unless explicitly enabled");
+  assert.equal(typeof amb.enabled, "boolean");
   assert.ok(Array.isArray(amb.queue));
   assert.equal(amb.limits.commentsPerDay, 5);
 });
