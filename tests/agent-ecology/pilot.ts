@@ -88,10 +88,15 @@ async function runPair(p: Persona): Promise<PairResult> {
         res.found_marker = `round ${round} via ${kind}`;
         rec({ round, marker: res.found_marker });
       }
-      rec({ round, agent_stop: r.stop_reason, content_kinds: r.content.map((b) => b.type) });
+      const queries = r.content.filter((b: any) => b.type === "server_tool_use").map((b: any) => ({ tool: b.name, input: b.input }));
+      rec({ round, agent_stop: r.stop_reason, content_kinds: r.content.map((b) => b.type), queries });
+      /** Server tools (search/fetch) can leave an in-flight code-execution tool_use in the content when the turn ends on a
+       * custom tool call; resubmitting it without a result block is a 400. Drop unresolved server-tool blocks. */
+      const resolved = new Set(r.content.map((b: any) => b.tool_use_id).filter(Boolean));
+      const sanitize = (content: typeof r.content) => content.filter((b: any) => !(String(b.id ?? "").startsWith("srvtoolu_") && (b.type === "tool_use" || b.type === "server_tool_use") && !resolved.has(b.id)));
       if (r.stop_reason === "pause_turn") { agentMsgs.push({ role: "assistant", content: r.content }); continue; }
       if (r.stop_reason === "tool_use") {
-        agentMsgs.push({ role: "assistant", content: r.content });
+        agentMsgs.push({ role: "assistant", content: sanitize(r.content) });
         const results: Anthropic.ToolResultBlockParam[] = [];
         for (const b of r.content) {
           if (b.type !== "tool_use") continue;
@@ -103,7 +108,7 @@ async function runPair(p: Persona): Promise<PairResult> {
         continue;
       }
       // end_turn without reply_to_human: treat the text as a message to the human.
-      agentMsgs.push({ role: "assistant", content: r.content });
+      agentMsgs.push({ role: "assistant", content: sanitize(r.content) });
       toHuman = r.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join(" ").trim() || "(no message)";
     }
     if (res.aborted) break;
