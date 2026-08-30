@@ -214,6 +214,7 @@ Resources:
         - { DomainName: !Sub "www.${DomainName}", HostedZoneId: !Ref HostedZoneId }
   LoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    DependsOn: AlbLogsBucketPolicy   # ELB validates bucket write access when the access-log attribute is set
     Properties:
       Name: rendezvous
       Scheme: internet-facing
