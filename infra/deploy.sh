@@ -14,6 +14,11 @@ TAG=${TAG:-$(date -u +%Y%m%d%H%M%S)}
 STACK=${STACK:-rendezvous}
 BUILDER=${BUILDER:-podman}
 
+check_image() {
+  aws ecr describe-images --region "$REGION" --repository-name rendezvous --image-ids imageTag="$TAG" >/dev/null 2>&1 \
+    || { echo "ERROR: image tag $TAG not found in ECR — build it first (or drop SKIP_BUILD)" >&2; exit 1; }
+}
+
 if [[ -z "${SKIP_BUILD:-}" ]]; then
   echo "== building $REPO:$TAG"
   $BUILDER build --platform linux/amd64 -t "$REPO:$TAG" -t "$REPO:latest" .
@@ -21,6 +26,7 @@ if [[ -z "${SKIP_BUILD:-}" ]]; then
   $BUILDER push "$REPO:$TAG"
   $BUILDER push "$REPO:latest"
 fi
+[[ -n "${SKIP_BUILD:-}" ]] && check_image
 
 echo "== deploying stack $STACK with image $REPO:$TAG"
 aws cloudformation deploy --region "$REGION" --stack-name "$STACK" \
