@@ -5,3 +5,6 @@ dist/
 *.log
 .DS_Store
 infra/params.env
+
+# experiment transcripts stay out of git
+tests/agent-ecology/out/
