@@ -11,6 +11,7 @@ import { stripeWebhook } from "./billing/stripe.js";
 import { sweepExpired } from "./rendezvous/service.js";
 import * as pages from "./web/pages.js";
 import { toolCatalog } from "./mcp/catalog.js";
+import { recordMcpEvent, recordVisit } from "./telemetry.js";
 import { cycle as ambassadorCycle } from "./ambassador/run.js";
 
 const RAP = readFileSync(pathJoin(process.cwd(), "protocol", "RAP-0.2.md"), "utf8");
@@ -54,6 +55,7 @@ app.post("/mcp", MCP_CORS, express.json({ limit: requestBodyLimit() }), async (r
   const server = createMcpServer({ ip: req.ip, userAgent: req.header("user-agent"), bearer });
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   res.on("close", () => { transport.close().catch(() => {}); server.close().catch(() => {}); });
+  recordMcpEvent(req, req.body);
   try {
     await server.connect(transport);
     await transport.handleRequest(req, res, req.body);
@@ -72,6 +74,8 @@ app.post("/webhooks/stripe", express.raw({ type: "application/json", limit: "256
 app.use("/admin", express.json({ limit: "64kb" }), admin);
 
 // ---- website ----
+const TRACKED = new Set(["/", "/how-it-works", "/for-agents", "/trust", "/founder", "/privacy", "/terms", "/protocol", "/protocol.md", "/stats", "/stats.json", "/llms.txt", "/.well-known/agent-card.json", "/.well-known/mcp/server-card.json", "/billing/success", "/billing/cancel"]);
+app.use((req, _res, next) => { if (req.method === "GET" && TRACKED.has(req.path)) recordVisit(req, req.path); next(); });
 app.use("/static", express.static(pathJoin(process.cwd(), "web", "static"), { maxAge: "365d", immutable: true, index: false }));
 const html = (fn: () => string) => (_req: Request, res: Response) => { res.type("html").send(fn()); };
 app.get("/", html(pages.home));

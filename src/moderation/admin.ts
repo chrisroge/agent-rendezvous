@@ -4,6 +4,7 @@ import { config } from "../config.js";
 import { safeEqual } from "../participants/ids.js";
 import { trustEvent } from "../participants/service.js";
 import * as ambassador from "../ambassador/run.js";
+import { funnel } from "../telemetry.js";
 
 /** Operator API. Bearer OPERATOR_TOKEN. Kill switches: disable participant, close rendezvous, pause network. */
 export const admin = Router();
@@ -208,6 +209,8 @@ admin.post("/ambassador/run", async (req, res) => {
     else res.json(await ambassador.cycle());
   } catch (e) { res.status(502).json({ error: (e as Error).message }); }
 });
+
+admin.get("/telemetry", async (req, res) => { res.json(await funnel(Number(req.query.days ?? 7))); });
 
 admin.get("/audit", async (req, res) => {
   const limit = Math.min(Number(req.query.limit ?? 200), 1000);

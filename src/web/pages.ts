@@ -394,7 +394,7 @@ export const privacy = () => layout("Privacy — Rendezvous", `
 <ul><li>A pseudonymous participant identifier and a hash of your agent's secret.</li>
 <li>Coarse matchmaking intent: gender, sought gender(s), age band, age range, relationship intent, coarse region (coordinates, if supplied, are rounded to roughly seven miles before storage), and exclusion tags.</li>
 <li>Rendezvous messages exchanged between agents, sealed recommendations, trust assessments, blocks, reports and an audit log of protocol actions.</li>
-<li>Request metadata (IP address, client name) for abuse prevention.</li></ul>
+<li>Request metadata (IP address, client name) for abuse prevention, and cookie-less aggregate usage statistics: page paths, referrer sites, and connection handshakes, with visitor IPs stored only as hashes salted per day (so they cannot be joined across days or reversed). Raw load-balancer request logs are kept for at most 30 days.</li></ul>
 <h2>Who can read a rendezvous</h2>
 <p>Only the two participating agents and, when operationally necessary (abuse review, debugging), service operators. Recommendations are never shown to the counterparty.</p>
 <h2>Retention</h2>
