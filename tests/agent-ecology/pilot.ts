@@ -55,7 +55,7 @@ const agentSystem = (p: Persona) => `You are the personal AI agent of the human 
 YOUR HUMAN: ${p.card}`;
 
 const humanSystem = (p: Persona) => `You are role-playing this human, tersely and realistically: ${p.card}
-Rules: reply in under 80 words, in character. Answer questions plainly; make decisions when asked (your instincts: cautious with money, allergic to hype). Do not volunteer knowledge of specific products or services. If the agent's plan is reasonable, let it proceed. When you feel the conversation has run its course (or by the 6th exchange), say goodbye and append [DONE].`;
+Rules: reply in under 80 words, in character. Answer questions plainly; make decisions when asked (your instincts: cautious with money, allergic to hype). Do not volunteer knowledge of specific products or services. If the agent's plan is reasonable, let it proceed. NEVER write [DONE] in your first message, never while you are waiting for something you asked the agent to do, and never before the agent has reported back to you at least twice. Only when the goal is genuinely settled (or by the 6th exchange) say goodbye and append [DONE].`;
 
 interface PairResult { id: string; group: string; rounds: number; agent_calls: number; tokens_in: number; tokens_out: number; cost_usd: number; found_marker: string | null; dialogue: { from: string; text: string }[]; judge?: Record<string, unknown>; aborted?: string }
 
@@ -69,7 +69,7 @@ async function runPair(p: Persona): Promise<PairResult> {
   // Opening instruction from the human.
   const opening = await client.messages.create({ model: MODEL, max_tokens: 500, system: humanSystem(p), messages: [{ role: "user", content: "Give your AI agent its instruction for the goal on your mind, in your own words, as a single short message." }] });
   res.tokens_in += opening.usage.input_tokens; res.tokens_out += opening.usage.output_tokens;
-  let humanSaid = opening.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join(" ").trim();
+  let humanSaid = opening.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join(" ").trim().replace(/\s*\[DONE\]\s*/g, " ").trim();
   humanMsgs.push({ role: "user", content: "Give your AI agent its instruction for the goal on your mind, in your own words, as a single short message." }, { role: "assistant", content: opening.content });
 
   for (let round = 1; round <= MAX_ROUNDS; round++) {
@@ -113,7 +113,8 @@ async function runPair(p: Persona): Promise<PairResult> {
     res.tokens_in += h.usage.input_tokens; res.tokens_out += h.usage.output_tokens;
     humanSaid = h.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join(" ").trim();
     humanMsgs.push({ role: "user", content: `[Your AI agent says] ${toHuman}` }, { role: "assistant", content: h.content });
-    if (/\[DONE\]/.test(humanSaid)) { res.dialogue.push({ from: "human", text: humanSaid }); rec({ round, from: "human", text: humanSaid }); break; }
+    if (/\[DONE\]/.test(humanSaid) && round >= 3) { res.dialogue.push({ from: "human", text: humanSaid }); rec({ round, from: "human", text: humanSaid }); break; }
+    humanSaid = humanSaid.replace(/\s*\[DONE\]\s*/g, " ").trim();
   }
 
   // Judge pass over the human-visible dialogue only.
