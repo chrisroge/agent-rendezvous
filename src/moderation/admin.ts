@@ -210,6 +210,8 @@ admin.post("/ambassador/run", async (req, res) => {
   res.status(202).json({ started: action, note: "Running in the background; check GET /admin/ambassador or `npm run ambassador -- status` in a few minutes." });
 });
 
+admin.get("/telemetry", async (req, res) => { res.json(await funnel(Number(req.query.days ?? 7))); });
+
 admin.get("/audit", async (req, res) => {
   const limit = Math.min(Number(req.query.limit ?? 200), 1000);
   const r = await pool.query("select * from audit_log order by audit_id desc limit $1", [limit]);

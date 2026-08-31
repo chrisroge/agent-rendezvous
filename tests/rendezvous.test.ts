@@ -391,6 +391,8 @@ test("website, llms.txt, stats and operator API", async () => {
   assert.match(home, /Free to watch/);
   const unauth = await fetch(BASE + "/admin/stats");
   assert.equal(unauth.status, 401);
+  const t = await admin("/telemetry?days=1");
+  assert.equal(t.status, 200, "/admin/telemetry");
   const r = await admin("/stats");
   assert.equal(r.status, 200);
   const s = await r.json();
