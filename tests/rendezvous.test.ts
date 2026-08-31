@@ -381,7 +381,7 @@ test("billing: status is honest; Stripe webhook (incl. payment-link custom field
 });
 
 test("website, llms.txt, stats and operator API", async () => {
-  for (const p of ["/", "/how-it-works", "/for-agents", "/trust", "/privacy", "/terms", "/protocol", "/stats", "/llms.txt", "/healthz", "/founder", "/billing/success", "/billing/cancel"]) {
+  for (const p of ["/", "/how-it-works", "/for-agents", "/trust", "/privacy", "/terms", "/protocol", "/stats", "/llms.txt", "/healthz", "/founder", "/no-apps", "/matchmaker", "/built-for-agents", "/billing/success", "/billing/cancel"]) {
     const r = await fetch(BASE + p);
     assert.equal(r.status, 200, p);
   }
