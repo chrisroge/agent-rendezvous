@@ -55,14 +55,15 @@ after(async () => {
   await client.close();
 });
 
-test("protocol tool returns RAP/0.2 and server exposes instructions", async () => {
+test("protocol tool returns RAP/0.3 and server exposes instructions", async () => {
   const r = await call(client, "protocol");
-  assert.equal(r.version, "RAP/0.2");
+  assert.equal(r.version, "RAP/0.3");
   assert.match(r.protocol, /A Rendezvous agent serves its human/);
   assert.match(r.protocol, /Membership and invitations/);
+  assert.match(r.protocol, /consent and reveal/i);
   assert.match(client.getInstructions() ?? "", /Rejection is a successful outcome/);
   const tools = await client.listTools();
-  assert.equal(tools.tools.length, 14);
+  assert.equal(tools.tools.length, 15);
 });
 
 test("join creates identities; comp grants membership; resume works; bad secrets rejected", async () => {
@@ -191,6 +192,33 @@ test("counterparty assessment feeds trust evidence, not compatibility", async ()
   assert.equal(sb.history.unique_counterparties, 1);
 });
 
+
+test("introduction: sealed human consent; contact revealed only on mutual YES", async () => {
+  const st0 = await call(client, "introduction", { participant_secret: P.A.secret, rendezvous_id: rvz, action: "status" });
+  assert.equal(st0.state, "AWAITING_BOTH");
+  assert.equal(st0.your_consent, "PENDING");
+  const noConfirm = await call(client, "introduction", { participant_secret: P.A.secret, rendezvous_id: rvz, action: "accept", contact: "marta@example.com" });
+  assert.equal(noConfirm.error, "INVALID_INPUT");
+  const a = await call(client, "introduction", { participant_secret: P.A.secret, rendezvous_id: rvz, action: "accept", contact: "marta@example.com", human_confirmed: true });
+  assert.equal(a.state, "AWAITING_BOTH");
+  assert.equal(a.your_consent, "YES");
+  const bView = await call(client, "introduction", { participant_secret: P.B.secret, rendezvous_id: rvz, action: "status" });
+  assert.equal(bView.awaiting, "you");
+  assert.equal(JSON.stringify(bView).includes("marta@example.com"), false, "contact must stay sealed until mutual YES");
+  const dup = await call(client, "introduction", { participant_secret: P.A.secret, rendezvous_id: rvz, action: "accept", contact: "again@example.com", human_confirmed: true });
+  assert.equal(dup.error, "CONFLICT");
+  const b = await call(client, "introduction", { participant_secret: P.B.secret, rendezvous_id: rvz, action: "accept", contact: "555-0100 (call after 6)", human_confirmed: true });
+  assert.equal(b.state, "REVEALED");
+  assert.equal(b.counterparty_contact, "marta@example.com");
+  const aAfter = await call(client, "introduction", { participant_secret: P.A.secret, rendezvous_id: rvz, action: "status" });
+  assert.equal(aAfter.state, "REVEALED");
+  assert.equal(aAfter.counterparty_contact, "555-0100 (call after 6)");
+  const sA = await call(client, "status", { participant_secret: P.A.secret });
+  assert.equal(sA.mutual_affinities[0].introduction.state, "REVEALED");
+  const sB = await call(client, "status", { participant_secret: P.B.secret });
+  assert.equal(sB.history.human_consent_events, 1);
+});
+
 test("NO recommendation never leaks, and a YES needs a real investigation", async () => {
   await joinAs("D", woman);
   const o = await call(client, "rendezvous_open", { participant_secret: P.A.secret, candidate_id: P.D.id });
@@ -293,6 +321,30 @@ test("membership: non-members watch for free, read invitations in full, decline 
   const ra = await call(client, "rendezvous_read", { participant_secret: P.A.secret, rendezvous_id: inv2.rendezvous_id });
   assert.equal(ra.outcome, "NO_INTRODUCTION");
   assert.equal(ra.closed_by_you, false);
+});
+
+
+test("introduction decline is neutral and deletes contacts", async () => {
+  // Finish the accepted A–G invitation into a second mutual affinity, then decline the introduction.
+  const g = P.G;
+  const rid = (await call(client, "status", { participant_secret: g.secret })).rendezvous[0].rendezvous_id;
+  await call(client, "rendezvous_send", { participant_secret: P.A.secret, rendezvous_id: rid, message: "A2" });
+  await call(client, "rendezvous_send", { participant_secret: P.A.secret, rendezvous_id: rid, message: "A3" });
+  await call(client, "rendezvous_send", { participant_secret: g.secret, rendezvous_id: rid, message: "G2" });
+  await call(client, "rendezvous_send", { participant_secret: g.secret, rendezvous_id: rid, message: "G3" });
+  const rA = await call(client, "recommend", { participant_secret: P.A.secret, rendezvous_id: rid, recommend: true, concerns: ["pace"] });
+  assert.equal(rA.status, "AWAITING_COUNTERPARTY");
+  const rG = await call(client, "recommend", { participant_secret: g.secret, rendezvous_id: rid, recommend: true, concerns: ["distance"] });
+  assert.equal(rG.status, "MUTUAL_AFFINITY");
+  const aYes = await call(client, "introduction", { participant_secret: P.A.secret, rendezvous_id: rid, action: "accept", contact: "tom@example.com", human_confirmed: true });
+  assert.equal(aYes.your_consent, "YES");
+  const gNo = await call(client, "introduction", { participant_secret: g.secret, rendezvous_id: rid, action: "decline" });
+  assert.equal(gNo.state, "DECLINED");
+  const aView = await call(client, "introduction", { participant_secret: P.A.secret, rendezvous_id: rid, action: "status" });
+  assert.equal(aView.state, "DECLINED");
+  assert.equal(JSON.stringify(aView).includes("tom@example.com"), false, "contacts deleted on decline");
+  const late = await call(client, "introduction", { participant_secret: P.A.secret, rendezvous_id: rid, action: "accept", contact: "x@example.com", human_confirmed: true });
+  assert.equal(late.already_closed, true);
 });
 
 test("block hides both directions; report creates a record", async () => {

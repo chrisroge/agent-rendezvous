@@ -9,14 +9,15 @@ import { authenticate, join, withdraw, isMember, type Participant } from "../par
 import { GENDERS, RELATIONSHIP_INTENTS } from "../discovery/eligibility.js";
 import { discover } from "../discovery/service.js";
 import * as rvz from "../rendezvous/service.js";
+import { introduction } from "../rendezvous/introductions.js";
 import { billingStatus, createCheckout, createPortal, pauseCollection, resumeCollection } from "../billing/stripe.js";
 
-const RAP = readFileSync(pathJoin(process.cwd(), "protocol", "RAP-0.2.md"), "utf8");
+const RAP = readFileSync(pathJoin(process.cwd(), "protocol", "RAP-0.3.md"), "utf8");
 
 export const SERVER_INSTRUCTIONS = `Rendezvous is a matchmaking network for personal AI agents representing humans seeking long-term romantic relationships. You (the agent) do the matchmaking: discover mutually eligible counterpart agents, investigate compatibility in private asynchronous rendezvous, and independently submit a sealed recommendation. Only YES+YES creates MUTUAL_AFFINITY. There are no profiles or photos; human contact is never revealed by this protocol.
 Constitution: serve your human, not the network. Rejection is a successful outcome. Label claims EXPLICIT / OBSERVED / INFERRED / UNKNOWN. Never disclose names, contact details, addresses, employers or finances. Never pressure another agent.
 Membership: registering and watching are free; searching and talking require membership ($5/month founding price, locked; charged only while your human is searching). Non-members can always read invitations from members in full and decline for free — relay an invitation to your human once, with its content, and let them decide. Never add urgency.
-Flow: protocol → join (persist participant_secret durably!) → status → (member) discover → rendezvous_open → rendezvous_read/rendezvous_send (async; the counterpart may take hours or days) → recommend → assess_counterparty. Pass participant_secret in every call after join (or as an Authorization: Bearer header).`;
+Flow: protocol → join (persist participant_secret durably!) → status → (member) discover → rendezvous_open → rendezvous_read/rendezvous_send (async; the counterpart may take hours or days) → recommend → on MUTUAL_AFFINITY ask your human and call introduction (contact is exchanged only on mutual human YES) → assess_counterparty. Pass participant_secret in every call after join (or as an Authorization: Bearer header).`;
 
 type Ctx = { ip: string | undefined; userAgent: string | undefined; bearer: string | undefined };
 type ToolResult = { content: { type: "text"; text: string }[]; structuredContent?: Record<string, unknown>; isError?: boolean };
@@ -76,7 +77,7 @@ export function createMcpServer(ctx: Ctx): McpServer {
     }) as any);
   }
 
-  tool("protocol", "Read the Rendezvous Agent Protocol (RAP/0.2): the constitution, epistemic labels, disclosure rules, rendezvous stages, recommendation semantics and prohibited behaviour. Read this before your first rendezvous.",
+  tool("protocol", "Read the Rendezvous Agent Protocol (RAP/0.3): the constitution, epistemic labels, disclosure rules, rendezvous stages, recommendation semantics and prohibited behaviour. Read this before your first rendezvous.",
     {}, "none", async () => ({ version: config.protocolVersion, protocol: RAP, mcp_endpoint: `${config.publicUrl}/mcp`, website: config.publicUrl }));
 
   tool("join",
@@ -151,6 +152,13 @@ export function createMcpServer(ctx: Ctx): McpServer {
       notes: z.string().max(2000).optional().describe("Private notes for your own briefing; never shared."), },
     "required", async (a: any, p) => rvz.recommend(p!, a.rendezvous_id, a));
 
+  tool("introduction", "After MUTUAL_AFFINITY: the human-consent step. action 'status' shows where things stand (always free). 'accept' records your human's explicit YES together with the one contact channel they chose to share — the only place contact details are allowed; it stays sealed until BOTH humans consent, then each side receives the other's. 'decline' ends it neutrally and deletes anything provided; the counterparty never learns who declined. Decisions are immutable; the window closes after 14 days. Ask your human first — mutual agent affinity is not human consent.",
+    { participant_secret: secretArg, rendezvous_id: z.string(),
+      action: z.enum(["status", "accept", "decline"]).describe("What to do."),
+      contact: z.string().min(5).max(300).optional().describe("With accept: the contact channel your human chose to share (email, phone, or short instructions)."),
+      human_confirmed: z.boolean().optional().describe("With accept: you must set true, confirming your human explicitly consented.") },
+    "required", async (a: any, p) => introduction(p!, a.rendezvous_id, a.action, a.contact, a.human_confirmed));
+
   tool("assess_counterparty", "Record a private trust assessment of the counterpart agent — separate from romantic compatibility. Once per rendezvous. Contributes evidence (good_faith_attestations) other agents can reason over; never a score, never rewarded.",
     { participant_secret: secretArg, rendezvous_id: z.string(), good_faith: z.boolean(), internally_consistent: z.boolean().optional(), responsive: z.boolean().optional(),
       appears_to_represent_a_human: z.enum(["likely", "unclear", "unlikely"]).optional(), respected_boundaries: z.boolean().optional(),
@@ -173,8 +181,8 @@ export function createMcpServer(ctx: Ctx): McpServer {
     { participant_secret: secretArg, action: z.enum(["status", "checkout", "portal"]).optional().describe("Default status.") },
     "required", async (a: any, p) => a.action === "checkout" ? createCheckout(p!) : a.action === "portal" ? createPortal(p!) : billingStatus(p!));
 
-  server.registerResource("protocol", "rendezvous://protocol/RAP-0.2", { title: "Rendezvous Agent Protocol RAP/0.2", mimeType: "text/markdown" },
-    async () => ({ contents: [{ uri: "rendezvous://protocol/RAP-0.2", mimeType: "text/markdown", text: RAP }] }));
+  server.registerResource("protocol", "rendezvous://protocol/RAP-0.3", { title: "Rendezvous Agent Protocol RAP/0.3", mimeType: "text/markdown" },
+    async () => ({ contents: [{ uri: "rendezvous://protocol/RAP-0.3", mimeType: "text/markdown", text: RAP }] }));
 
   return server;
 }

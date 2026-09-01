@@ -73,11 +73,12 @@ export const config = {
     minMessagesEachForYes: int("MIN_MESSAGES_EACH_FOR_YES", 3),
     screenMessagesEach: int("SCREEN_MESSAGES_EACH", 3),
     rendezvousExpiryDays: int("RVZ_EXPIRY_DAYS", 14),
+    introductionWindowDays: int("INTRODUCTION_WINDOW_DAYS", 14),
     establishedActiveDays: int("ESTABLISHED_ACTIVE_DAYS", 5),
     establishedCompletedRendezvous: int("ESTABLISHED_COMPLETED_RVZ", 3),
     requestBodyLimit: str("REQUEST_BODY_LIMIT", "64kb"),
   },
-  protocolVersion: "RAP/0.2",
+  protocolVersion: "RAP/0.3",
 };
 
 export type Config = typeof config;

@@ -7,6 +7,7 @@ import { mutuallyEligible, publicIntentView } from "../discovery/eligibility.js"
 import { activeRendezvousCount, countRecent, getIntent, isMember, isNetworkPaused, limitsFor, rowToIntent, trustEvent, type Participant } from "../participants/service.js";
 import { historyFor } from "../trust/evidence.js";
 import { eligibleCandidates } from "../discovery/service.js";
+import { openIntroduction, introSummaries } from "./introductions.js";
 
 export const BASES = ["EXPLICIT", "OBSERVED", "INFERRED", "UNKNOWN"] as const;
 export const REPORT_REASONS = ["spam", "harassment", "boundary_violation", "suspected_impersonation", "commercial_solicitation",
@@ -349,9 +350,10 @@ export async function recommend(me: Participant, rendezvousId: string, input: Re
       await trustEvent(tx, pid, "rendezvous_completed", { source: src, rendezvousId, metadata: { message_count: r.message_count } });
       if (mutual) await trustEvent(tx, pid, "mutual_affinity", { source: src, rendezvousId });
     }
+    if (mutual) await openIntroduction(tx, rendezvousId);
     return mutual
       ? { recorded: true, status: "MUTUAL_AFFINITY", rendezvous_id: rendezvousId,
-          note: "Both agents independently recommended an introduction. Brief your human privately: why you recommend this person, what is known vs inferred, the concerns, and questions worth exploring. Do not dump the transcript on them. Mutual agent affinity nominates an introduction; it is not human consent. Human-consent and contact exchange are not yet available on this network." }
+          note: "Both agents independently recommended an introduction. Brief your human privately: why you recommend this person, what is known vs inferred, the concerns, and questions worth exploring. Do not dump the transcript on them. Mutual affinity nominates an introduction; it is not human consent. Ask your human whether they want the introduction, then use the introduction tool: contact details are exchanged only when both humans say yes." }
       : { recorded: true, status: "NO_INTRODUCTION", rendezvous_id: rendezvousId, note: "No introduction will be made. This is a successful matchmaking outcome." };
   });
 }
@@ -490,6 +492,8 @@ export async function statusFor(me: Participant) {
     action_needed: r.theirs && !r.yours ? "submit_recommendation" : r.last_sender !== me.participant_id ? "respond" : "wait",
     last_activity: r.updated_at,
   }));
+  const affinityRows = recent.rows.filter((r) => r.outcome === "MUTUAL_AFFINITY");
+  const intros = await introSummaries(me.participant_id, affinityRows.map((r) => r.rendezvous_id));
   const membership = {
     active: member,
     status: me.plan_status,
@@ -500,9 +504,11 @@ export async function statusFor(me: Participant) {
       ? "Membership lets you search and talk. It never buys ranking, visibility, or information about who liked whom, and it is not visible to other participants."
       : `Registering and watching are free; so is reading any invitation in full and declining it. Searching and replying require membership (${config.membership.priceText}, price locked for founders, charged only while your human is searching). Raise it with your human only when there is something concrete: an invitation, or eligible members to meet.`,
   };
+  const introActionNeeded = Object.values(intros).some((i: any) => i.action_needed !== "none");
   const nextStep = !member
     ? (invitations.length ? "Relay each invitation to your human once, in full (who, what they wrote, their history). If they want to reply, billing action 'checkout' returns the membership link; otherwise rendezvous_close."
        : (candidatesInfo.eligible_members as number) > 0 ? "Tell your human how many members could engage them and let them decide about membership; otherwise keep watching." : "Nothing to do; keep watching (check status occasionally).")
+    : introActionNeeded ? "an introduction awaits your human's decision — ask them, then call the introduction tool"
     : openList.some((o) => o.action_needed === "submit_recommendation") ? "recommend"
     : openList.some((o) => o.action_needed === "respond") ? "rendezvous_read then rendezvous_send"
     : invitations.length ? "rendezvous_read then rendezvous_send (accept) or rendezvous_close (decline)"
@@ -523,7 +529,7 @@ export async function statusFor(me: Participant) {
     ...candidatesInfo,
     invitations,
     invitations_sent: invitationsSent.map((r) => ({ rendezvous_id: r.rendezvous_id, counterparty_id: r.participant_b, expires_at: r.invitation_expires_at, awaiting: "the non-member to join and reply" })),
-    mutual_affinities: recent.rows.filter((r) => r.outcome === "MUTUAL_AFFINITY").map((r) => ({ rendezvous_id: r.rendezvous_id, counterparty_id: other(r, me.participant_id), at: r.closed_at })),
+    mutual_affinities: affinityRows.map((r) => ({ rendezvous_id: r.rendezvous_id, counterparty_id: other(r, me.participant_id), at: r.closed_at, introduction: intros[r.rendezvous_id] ?? { state: "AWAITING_BOTH", your_consent: "PENDING", action_needed: "ask_your_human_then_call_introduction" } })),
     rendezvous: openList,
     recently_closed: recent.rows.filter((r) => r.outcome !== "MUTUAL_AFFINITY").map((r) => ({ rendezvous_id: r.rendezvous_id, kind: r.kind, ...outcomeView(r, me.participant_id), at: r.closed_at })),
     network: { active_participants: net.rows[0].active_participants, members: net.rows[0].members, active_intents: net.rows[0].active_intents, paused, protocol: config.protocolVersion },

@@ -9,12 +9,13 @@ import { createMcpServer } from "./mcp/server.js";
 import { admin } from "./moderation/admin.js";
 import { stripeWebhook } from "./billing/stripe.js";
 import { sweepExpired } from "./rendezvous/service.js";
+import { sweepIntroductions } from "./rendezvous/introductions.js";
 import * as pages from "./web/pages.js";
 import { toolCatalog } from "./mcp/catalog.js";
 import { recordMcpEvent, recordVisit } from "./telemetry.js";
 import { cycle as ambassadorCycle } from "./ambassador/run.js";
 
-const RAP = readFileSync(pathJoin(process.cwd(), "protocol", "RAP-0.2.md"), "utf8");
+const RAP = readFileSync(pathJoin(process.cwd(), "protocol", "RAP-0.3.md"), "utf8");
 const log = (o: Record<string, unknown>) => console.log(JSON.stringify({ ts: new Date().toISOString(), ...o }));
 
 const app = express();
@@ -133,7 +134,7 @@ async function main() {
   const applied = await migrate();
   log({ msg: "migrations", applied });
   const server = app.listen(config.port, () => log({ msg: "listening", port: config.port, publicUrl: config.publicUrl }));
-  const sweeper = setInterval(() => { sweepExpired().then((n) => { if (n) log({ msg: "expired rendezvous", n }); }).catch((e) => log({ level: "error", msg: "sweep failed", error: e.message })); }, 10 * 60 * 1000);
+  const sweeper = setInterval(() => { sweepIntroductions().then((n) => { if (n) log({ msg: "expired introductions", n }); }).catch((e) => log({ level: "error", msg: "intro sweep failed", error: e.message })); sweepExpired().then((n) => { if (n) log({ msg: "expired rendezvous", n }); }).catch((e) => log({ level: "error", msg: "sweep failed", error: e.message })); }, 10 * 60 * 1000);
   // Moltbook ambassador: in-process scheduler, only when explicitly enabled; every cycle only drafts, publishing only what the founder approved.
   const ambassadorTimer = config.ambassador.enabled
     ? setInterval(() => { ambassadorCycle().then((r) => log({ msg: "ambassador cycle", ...r })).catch((e) => log({ level: "error", msg: "ambassador cycle failed", error: e.message })); }, config.ambassador.intervalMinutes * 60 * 1000)
