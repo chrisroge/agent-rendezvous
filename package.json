@@ -15,7 +15,9 @@
     "migrate": "tsx src/db/migrate.ts",
     "test": "tsx --test tests/rendezvous.test.ts tests/ambassador.test.ts",
     "experiment": "tsx tests/agent-experiment.ts",
-    "ambassador": "tsx tools/ambassador-cli.ts"
+    "ambassador": "tsx tools/ambassador-cli.ts",
+    "june": "tsx src/june/index.ts",
+    "june:cycle": "tsx -e \"import('./src/june/engine.js').then(m=>m.cycle()).then(r=>{console.log(JSON.stringify(r));process.exit(0)})\""
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
