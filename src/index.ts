@@ -14,6 +14,9 @@ import * as pages from "./web/pages.js";
 import { toolCatalog } from "./mcp/catalog.js";
 import { recordMcpEvent, recordVisit } from "./telemetry.js";
 import { cycle as ambassadorCycle } from "./ambassador/run.js";
+import { juneRouter } from "./june/app.js";
+import { juneMigrate } from "./june/db.js";
+import { cycle as juneCycle } from "./june/engine.js";
 
 const RAP = readFileSync(pathJoin(process.cwd(), "protocol", "RAP-0.3.md"), "utf8");
 const log = (o: Record<string, unknown>) => console.log(JSON.stringify({ ts: new Date().toISOString(), ...o }));
@@ -74,6 +77,9 @@ app.post("/webhooks/stripe", express.raw({ type: "application/json", limit: "256
 // ---- operator ----
 app.use("/admin", express.json({ limit: "64kb" }), admin);
 
+// ---- June (hosted matchmaker), mounted in-process; reaches the network only via the public MCP endpoint ----
+if (config.june.enabled) app.use(config.june.path, express.json({ limit: "32kb" }), juneRouter());
+
 // ---- website ----
 const TRACKED = new Set(["/", "/how-it-works", "/for-agents", "/trust", "/founder", "/no-apps", "/matchmaker", "/built-for-agents", "/privacy", "/terms", "/protocol", "/protocol.md", "/stats", "/stats.json", "/llms.txt", "/.well-known/agent-card.json", "/.well-known/mcp/server-card.json", "/billing/success", "/billing/cancel"]);
 app.use((req, _res, next) => { if (req.method === "GET" && TRACKED.has(req.path)) recordVisit(req, req.path); next(); });
@@ -133,6 +139,7 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 async function main() {
   const applied = await migrate();
   log({ msg: "migrations", applied });
+  if (config.june.enabled) { const j = await juneMigrate(); log({ msg: "june migrations", applied: j, path: config.june.path }); }
   const server = app.listen(config.port, () => log({ msg: "listening", port: config.port, publicUrl: config.publicUrl }));
   const sweeper = setInterval(() => { sweepIntroductions().then((n) => { if (n) log({ msg: "expired introductions", n }); }).catch((e) => log({ level: "error", msg: "intro sweep failed", error: e.message })); sweepExpired().then((n) => { if (n) log({ msg: "expired rendezvous", n }); }).catch((e) => log({ level: "error", msg: "sweep failed", error: e.message })); }, 10 * 60 * 1000);
   // Moltbook ambassador: in-process scheduler, only when explicitly enabled; every cycle only drafts, publishing only what the founder approved.
@@ -140,10 +147,15 @@ async function main() {
     ? setInterval(() => { ambassadorCycle().then((r) => log({ msg: "ambassador cycle", ...r })).catch((e) => log({ level: "error", msg: "ambassador cycle failed", error: e.message })); }, config.ambassador.intervalMinutes * 60 * 1000)
     : null;
   if (ambassadorTimer) log({ msg: "ambassador scheduler on", every_minutes: config.ambassador.intervalMinutes, auto_comments: config.ambassador.autoComments });
+  const juneTimer = config.june.enabled && config.june.schedulerEnabled
+    ? setInterval(() => { juneCycle().then((r) => log({ msg: "june cycle", ...r })).catch((e) => log({ level: "error", msg: "june cycle failed", error: e.message })); }, config.june.cycleMinutes * 60 * 1000)
+    : null;
+  if (juneTimer) log({ msg: "june scheduler on", every_minutes: config.june.cycleMinutes });
   const shutdown = (sig: string) => {
     log({ msg: "shutting down", sig });
     clearInterval(sweeper);
     if (ambassadorTimer) clearInterval(ambassadorTimer);
+    if (juneTimer) clearInterval(juneTimer);
     server.close(() => { pool.end().finally(() => process.exit(0)); });
     setTimeout(() => process.exit(0), 8000).unref();
   };

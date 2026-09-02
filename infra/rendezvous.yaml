@@ -19,6 +19,8 @@ Parameters:
   FounderPaymentLinkUrl: { Type: String, Default: "", Description: "Stripe Payment Link for the /founder page (not secret); empty hides the button" }
   AmbassadorEnabled: { Type: String, Default: "false", AllowedValues: ["true", "false"], Description: "Run the Moltbook ambassador scheduler in the app" }
   AmbassadorAutoComments: { Type: String, Default: "false", AllowedValues: ["true", "false"], Description: "Publish comments without founder approval (charter: only after 30 clean days)" }
+  JuneEnabled: { Type: String, Default: "false", AllowedValues: ["true", "false"], Description: "Mount the June matchmaker at JUNE_PATH" }
+  JuneSchedulerEnabled: { Type: String, Default: "false", AllowedValues: ["true", "false"], Description: "Run June's per-client matchmaking cycle" }
 
 Resources:
   # ---------- network security ----------
@@ -185,6 +187,8 @@ Resources:
             - { Name: FOUNDER_PAYMENT_LINK_URL, Value: !Ref FounderPaymentLinkUrl }
             - { Name: AMBASSADOR_ENABLED, Value: !Ref AmbassadorEnabled }
             - { Name: AMBASSADOR_AUTO_COMMENTS, Value: !Ref AmbassadorAutoComments }
+            - { Name: JUNE_ENABLED, Value: !Ref JuneEnabled }
+            - { Name: JUNE_SCHEDULER_ENABLED, Value: !Ref JuneSchedulerEnabled }
           Secrets:
             - { Name: DB_PASSWORD, ValueFrom: !Sub "${Database.MasterUserSecret.SecretArn}:password::" }
             - { Name: OPERATOR_TOKEN, ValueFrom: !Ref OperatorTokenSecret }

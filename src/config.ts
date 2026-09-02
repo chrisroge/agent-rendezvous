@@ -53,6 +53,12 @@ export const config = {
     anthropicApiKey: str("ANTHROPIC_API_KEY", ""),
     intervalMinutes: int("AMBASSADOR_INTERVAL_MINUTES", 180),
   },
+  june: {
+    enabled: str("JUNE_ENABLED", "false") === "true",
+    schedulerEnabled: str("JUNE_SCHEDULER_ENABLED", "false") === "true",
+    path: str("JUNE_PATH", "/meet"),
+    cycleMinutes: int("JUNE_CYCLE_MINUTES", 180),
+  },
   membership: {
     priceText: str("MEMBERSHIP_PRICE_TEXT", "$5/month"),
     invitationExpiryDays: int("INVITATION_EXPIRY_DAYS", 7),
