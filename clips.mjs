@@ -1,0 +1,12 @@
+import { chromium } from "/home/christopher/.cache/pw/node_modules/playwright/index.mjs";
+const OUT = "/tmp/claude-1000/-home-christopher-agent-rendezvous/92514bd5-2664-45a6-b13e-1009297cacdd/scratchpad";
+const b = await chromium.launch({ executablePath: "/home/christopher/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell" });
+const c = await b.newContext({ viewport: { width: 1280, height: 900 }, colorScheme: "light" }); const p = await c.newPage();
+await p.goto("http://127.0.0.1:8089/", { waitUntil: "networkidle" });
+const h = await p.evaluate(() => document.body.scrollHeight); console.log("height", h);
+const y = await p.evaluate(() => ({ diff: document.querySelector(".diff").getBoundingClientRect().top + scrollY - 120, price: document.querySelector(".doors.compact").getBoundingClientRect().top + scrollY - 140, cta: document.querySelector(".foundbtn").getBoundingClientRect().top + scrollY - 260 }));
+await p.screenshot({ path: `${OUT}/clip-diff.png`, fullPage: true, clip: { x: 0, y: y.diff, width: 1280, height: 1500 } });
+await p.screenshot({ path: `${OUT}/clip-price.png`, fullPage: true, clip: { x: 0, y: y.price, width: 1280, height: 1100 } });
+await p.goto("http://127.0.0.1:8089/pricing", { waitUntil: "networkidle" });
+await p.screenshot({ path: `${OUT}/clip-pricing.png`, fullPage: true, clip: { x: 0, y: 380, width: 1280, height: 900 } });
+await b.close();
