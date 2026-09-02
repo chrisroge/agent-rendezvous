@@ -44,10 +44,11 @@ button:disabled{opacity:.5}
 <div id="chat"></div>
 <form id="f"><textarea id="t" placeholder="Write to June…" rows="1"></textarea><button id="b" type="submit">Send</button></form>
 <script>
+const BASE=location.pathname.replace(/\/+$/,'');
 const chat=document.getElementById('chat'),f=document.getElementById('f'),t=document.getElementById('t'),b=document.getElementById('b');
 let code=null; try{code=localStorage.getItem('june_resume');}catch(e){}
 function add(role,text){const d=document.createElement('div');d.className='m '+(role==='june'?'june':role==='me'?'me':'sys');d.textContent=text;chat.appendChild(d);chat.scrollTop=chat.scrollHeight;}
-async function api(p,body){const r=await fetch(p,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});if(!r.ok){const e=await r.json().catch(()=>({error:'Something went sideways.'}));throw new Error(e.error||('HTTP '+r.status));}return r.json();}
+async function api(p,body){const r=await fetch(BASE+p,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});if(!r.ok){const e=await r.json().catch(()=>({error:'Something went sideways.'}));throw new Error(e.error||('HTTP '+r.status));}return r.json();}
 (async()=>{try{
   const s=await api('/api/session', code?{resume_code:code}:{});
   if(!s.resumed){code=s.resume_code;try{localStorage.setItem('june_resume',code);}catch(e){}}
