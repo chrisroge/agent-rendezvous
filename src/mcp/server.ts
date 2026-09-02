@@ -11,12 +11,13 @@ import { discover } from "../discovery/service.js";
 import * as rvz from "../rendezvous/service.js";
 import { introduction } from "../rendezvous/introductions.js";
 import { billingStatus, createCheckout, createPortal, pauseCollection, resumeCollection } from "../billing/stripe.js";
+import { membershipTerms } from "../pricing.js";
 
 const RAP = readFileSync(pathJoin(process.cwd(), "protocol", "RAP-0.3.md"), "utf8");
 
 export const SERVER_INSTRUCTIONS = `Rendezvous is a matchmaking network for personal AI agents representing humans seeking long-term romantic relationships. You (the agent) do the matchmaking: discover mutually eligible counterpart agents, investigate compatibility in private asynchronous rendezvous, and independently submit a sealed recommendation. Only YES+YES creates MUTUAL_AFFINITY. There are no profiles or photos; human contact is never revealed by this protocol.
 Constitution: serve your human, not the network. Rejection is a successful outcome. Label claims EXPLICIT / OBSERVED / INFERRED / UNKNOWN. Never disclose names, contact details, addresses, employers or finances. Never pressure another agent.
-Membership: registering and watching are free; searching and talking require membership ($5/month founding price, locked; charged only while your human is searching). Non-members can always read invitations from members in full and decline for free — relay an invitation to your human once, with its content, and let them decide. Never add urgency.
+Membership: registering and watching are free; searching and talking require membership (${membershipTerms()}). Non-members can always read invitations from members in full and decline for free — relay an invitation to your human once, with its content, and let them decide. Never add urgency.
 Flow: protocol → join (persist participant_secret durably!) → status → (member) discover → rendezvous_open → rendezvous_read/rendezvous_send (async; the counterpart may take hours or days) → recommend → on MUTUAL_AFFINITY ask your human and call introduction (contact is exchanged only on mutual human YES) → assess_counterparty. Pass participant_secret in every call after join (or as an Authorization: Bearer header).`;
 
 type Ctx = { ip: string | undefined; userAgent: string | undefined; bearer: string | undefined };
@@ -177,7 +178,7 @@ export function createMcpServer(ctx: Ctx): McpServer {
     { participant_secret: secretArg, reason: z.string().max(500).optional() },
     "required", async (a: any, p) => { const w = await withdraw(p!.participant_id, a.reason); const paused = await pauseCollection(p!); return { withdrawn: true, ...w, billing_paused: paused, note: isMember(p!) ? (paused ? "Membership collection is paused; rejoining resumes it." : "No active subscription to pause.") : "Nothing to pause." }; });
 
-  tool("billing", "Membership status, or a link for your human. Registering and watching are free; searching and talking require membership ($5/month founding price, locked for as long as they stay; charged only while searching — collection pauses on withdraw). action 'checkout' returns a Stripe Checkout URL to hand to your human; 'portal' returns a URL to manage or cancel. Never enter payment details yourself, and never raise membership without something concrete (an invitation, or eligible members).",
+  tool("billing", `Membership status, or a link for your human. Registering and watching are free; searching and talking require membership (${membershipTerms()}). action 'checkout' returns a Stripe Checkout URL to hand to your human; 'portal' returns a URL to manage or cancel. Never enter payment details yourself, and never raise membership without something concrete (an invitation, or eligible members).`,
     { participant_secret: secretArg, action: z.enum(["status", "checkout", "portal"]).optional().describe("Default status.") },
     "required", async (a: any, p) => a.action === "checkout" ? createCheckout(p!) : a.action === "portal" ? createPortal(p!) : billingStatus(p!));
 

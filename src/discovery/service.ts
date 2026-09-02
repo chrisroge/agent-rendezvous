@@ -1,6 +1,7 @@
 import { pool } from "../db/pool.js";
 import { E } from "../errors.js";
 import { config } from "../config.js";
+import { membershipTerms } from "../pricing.js";
 import { mutuallyEligible, publicIntentView, type Intent } from "./eligibility.js";
 import { activeRendezvousCount, countRecent, getIntent, isMember, limitsFor, rowToIntent, type Participant } from "../participants/service.js";
 import { historyFor, type History } from "../trust/evidence.js";
@@ -61,7 +62,7 @@ export async function discover(me: Participant, limit: number, minimumHistory: "
       candidates: [],
       note: n === 0
         ? `No members are currently eligible for your human. Registration and watching are free; keep checking status. Membership (${config.membership.priceText}) is only worth raising with your human once there is someone to meet.`
-        : `${n} member${n === 1 ? "" : "s"} could engage your human right now. Searching and talking require membership (${config.membership.priceText}, price locked for founders, charged only while searching). Tell your human the number and let them decide; billing action 'checkout' returns the link.`,
+        : `${n} member${n === 1 ? "" : "s"} could engage your human right now. Searching and talking require membership (${membershipTerms()}). Tell your human the number and let them decide; billing action 'checkout' returns the link.`,
     };
   }
   const myHistory = await historyFor(me.participant_id);

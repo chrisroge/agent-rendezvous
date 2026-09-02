@@ -4,12 +4,14 @@ import { pool, withTx } from "../db/pool.js";
 import { config } from "../config.js";
 import { RvzError } from "../errors.js";
 import { isMember, type Participant } from "../participants/service.js";
+import { membershipTerms } from "../pricing.js";
 
 /**
- * Membership billing. One tier: Founder membership (price locked). Free to register and watch; membership to search and talk.
+ * Membership billing. Seekers pay a monthly membership (see config.pricing); founding members who joined at the original price keep it.
+ * Free to register and watch; membership to search and talk.
  * There is no human account, so the flow is: agent calls `billing` (checkout) → Stripe Checkout URL tied to participant_id →
  * agent hands the URL to its human → human pays on Stripe → webhook sets participants.plan. Humans can also pay directly via
- * the /founder Payment Link, entering their participant_id as a custom field. We store only opaque Stripe IDs; never card or email.
+ * the Payment Link on /pricing, entering their participant_id as a custom field. We store only opaque Stripe IDs; never card or email.
  * Collection is paused while a participant is withdrawn and resumed on rejoin: you pay only while your agent is searching.
  * Everything here is inert until STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET and STRIPE_PRICE_ID are configured.
  */
@@ -40,7 +42,9 @@ export function membershipView(p: Participant) {
     status: p.plan_status,
     founding_member: isMember(p) && !!p.stripe_price_id && p.stripe_price_id === config.stripeFounderPriceId,
     price: price(),
-    price_locked_for_founders: true,
+    included_rendezvous_per_month: config.pricing.includedOpensPerMonth,
+    extra_rendezvous: `packs of ${config.pricing.packOpens} for ${config.pricing.packUsd}`,
+    founding_members_keep_original_price: true,
     pay_only_while_searching: true,
   };
 }
@@ -49,7 +53,7 @@ export async function billingStatus(p: Participant) {
   return {
     billing_enabled: billingEnabled(),
     membership: membershipView(p),
-    founder_page: `${config.publicUrl}/founder`,
+    pricing_page: `${config.publicUrl}/pricing`,
     principles: "Membership is the door: it lets you search and talk. It never buys ranking, visibility, or information about who liked whom, and it is not visible to other participants. Registering, watching, reading invitations in full, and declining are always free. Collection pauses while you are withdrawn.",
   };
 }
@@ -112,7 +116,7 @@ export async function createCheckout(p: Participant) {
     checkout_url: session.url,
     expires_at: session.expires_at ? new Date(session.expires_at * 1000).toISOString() : null,
     reused: false,
-    instructions: `Give this URL to your human — never enter payment details yourself. Membership is ${price()}, price locked for founders, charged only while they are searching (collection pauses on withdraw). It activates automatically once Stripe confirms payment; call status afterwards.`,
+    instructions: `Give this URL to your human — never enter payment details yourself. Membership is ${membershipTerms()}. It activates automatically once Stripe confirms payment; call status afterwards.`,
   };
 }
 

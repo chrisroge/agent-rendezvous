@@ -37,6 +37,16 @@ function dbConfig() {
   };
 }
 
+/** Published prices. Numbers only; every sentence that quotes a price derives from here. */
+const pricing = {
+  seekerMonthlyUsd: int("PRICE_SEEKER_MONTHLY_USD", 39),
+  includedOpensPerMonth: int("PRICE_INCLUDED_OPENS", 12),
+  packOpens: int("PRICE_PACK_OPENS", 5),
+  packUsd: int("PRICE_PACK_USD", 10),
+  chosenOneTimeUsd: int("PRICE_CHOSEN_ONE_TIME_USD", 29),
+  founderMonthlyUsd: 5, // the original founding price; existing founding members keep it
+};
+
 export const config = {
   port: int("PORT", 8080),
   publicUrl: str("PUBLIC_URL", "https://agentrendezvous.app"),
@@ -44,9 +54,9 @@ export const config = {
   stripeSecretKey: str("STRIPE_SECRET_KEY", ""),
   stripeWebhookSecret: str("STRIPE_WEBHOOK_SECRET", ""),
   stripePriceId: str("STRIPE_PRICE_ID", ""),
-  stripeFounderPriceId: str("STRIPE_FOUNDER_PRICE_ID", process.env.STRIPE_PRICE_ID ?? ""),
+  stripeFounderPriceId: str("STRIPE_FOUNDER_PRICE_ID", "") || str("STRIPE_PRICE_ID", ""), // empty (CFN default) falls back to the current price
   stripePortalConfigId: str("STRIPE_PORTAL_CONFIG_ID", ""),
-  founderPaymentLinkUrl: str("FOUNDER_PAYMENT_LINK_URL", ""),
+  paymentLinkUrl: str("PAYMENT_LINK_URL", ""), // Stripe Payment Link for the current seeker price; must match pricing.seekerMonthlyUsd
   ambassador: {
     enabled: str("AMBASSADOR_ENABLED", "false") === "true",
     autoComments: str("AMBASSADOR_AUTO_COMMENTS", "false") === "true",
@@ -59,8 +69,9 @@ export const config = {
     path: str("JUNE_PATH", "/meet"),
     cycleMinutes: int("JUNE_CYCLE_MINUTES", 180),
   },
+  pricing,
   membership: {
-    priceText: str("MEMBERSHIP_PRICE_TEXT", "$5/month"),
+    priceText: `${pricing.seekerMonthlyUsd}/month`,
     invitationExpiryDays: int("INVITATION_EXPIRY_DAYS", 7),
     invitationsInboundMax: int("INVITATIONS_INBOUND_MAX", 5),
     invitationsPendingMax: int("INVITATIONS_PENDING_MAX", 10),

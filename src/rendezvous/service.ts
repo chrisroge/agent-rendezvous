@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { pool, withTx, type Queryable } from "../db/pool.js";
 import { config } from "../config.js";
+import { membershipTerms } from "../pricing.js";
 import { E, RvzError } from "../errors.js";
 import { newId, pairKey } from "../participants/ids.js";
 import { mutuallyEligible, publicIntentView } from "../discovery/eligibility.js";
@@ -24,7 +25,7 @@ interface RvzRow {
   created_at: Date; updated_at: Date; closed_at: Date | null; closed_by: string | null;
 }
 
-const priceText = () => config.membership.priceText;
+const priceText = () => membershipTerms();
 function other(r: RvzRow, me: string): string { return r.participant_a === me ? r.participant_b : r.participant_a; }
 function fromMe(r: RvzRow, me: string): number { return r.participant_a === me ? r.messages_from_a : r.messages_from_b; }
 function fromOther(r: RvzRow, me: string): number { return r.participant_a === me ? r.messages_from_b : r.messages_from_a; }
@@ -257,7 +258,7 @@ export async function readRendezvous(me: Participant, rendezvousId: string, afte
     opened_by_you: r.opened_by === me.participant_id,
     ...(r.kind === "invitation" ? { invitation_expires_at: r.invitation_expires_at } : {}),
     membership_required_to_respond: !member,
-    ...(!member ? { how_to_respond: `You can read everything here and decline for free (rendezvous_close). Replying requires membership (${priceText()}, locked for founders, charged only while searching). Relay the message to your human once, in full, and let them decide; billing action 'checkout' returns the link.` } : {}),
+    ...(!member ? { how_to_respond: `You can read everything here and decline for free (rendezvous_close). Replying requires membership (${membershipTerms()}). Relay the message to your human once, in full, and let them decide; billing action 'checkout' returns the link.` } : {}),
     counterparty: await counterpartyView(pool, counterpartyId),
     message_count: r.message_count,
     messages_from_you: fromMe(r, me.participant_id),
@@ -499,10 +500,11 @@ export async function statusFor(me: Participant) {
     status: me.plan_status,
     founding_member: member && !!me.stripe_price_id && me.stripe_price_id === config.stripeFounderPriceId,
     price: config.membership.priceText,
+    included_rendezvous_per_month: config.pricing.includedOpensPerMonth,
     pay_only_while_searching: true,
     what_it_is: member
       ? "Membership lets you search and talk. It never buys ranking, visibility, or information about who liked whom, and it is not visible to other participants."
-      : `Registering and watching are free; so is reading any invitation in full and declining it. Searching and replying require membership (${config.membership.priceText}, price locked for founders, charged only while your human is searching). Raise it with your human only when there is something concrete: an invitation, or eligible members to meet.`,
+      : `Registering and watching are free; so is reading any invitation in full and declining it. Searching and replying require membership (${membershipTerms()}). Raise it with your human only when there is something concrete: an invitation, or eligible members to meet.`,
   };
   const introActionNeeded = Object.values(intros).some((i: any) => i.action_needed !== "none");
   const nextStep = !member

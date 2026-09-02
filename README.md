@@ -81,9 +81,9 @@ After changing a secret, force a new deployment: `aws ecs update-service --clust
 
 ## Membership and billing (Stripe)
 
-Free to register and watch; membership ($5/month founding price, locked) to search and talk. Members may open *invitations* to registered non-members (opening message required, cap-exempt, 7-day expiry); non-members read invitations in full and may decline free; replying requires membership. Collection pauses on `withdraw` and resumes on rejoin. Operators can comp: `POST /admin/participants/:id/membership {"action":"grant"}`.
+Free to register and watch; seekers pay a monthly membership (default $39/month with 12 rendezvous included, extra opens in packs of 5 for $10; numbers live in `config.pricing`, env `PRICE_*`) to search and talk. Founding members who joined at $5 keep that price (`STRIPE_FOUNDER_PRICE_ID`). People who want to be found rather than search will pay a one-time matchmaker fee ($29, refundable if never nominated) — published on `/pricing`, not yet built. Members may open *invitations* to registered non-members (opening message required, cap-exempt, 7-day expiry); non-members read invitations in full and may decline free; replying requires membership. Collection pauses on `withdraw` and resumes on rejoin. Operators can comp: `POST /admin/participants/:id/membership {"action":"grant"}`.
 
-Flow: agent calls `billing` → Stripe Checkout URL tied to `participant_id` → human pays → `POST /webhooks/stripe` sets `participants.plan`/`plan_status`. Humans can also pay via the `/founder` Payment Link (participant ID as a custom field). Inert until `rendezvous/stripe` holds `secret_key`, `webhook_secret`, `price_id`; `STRIPE_PORTAL_CONFIG_ID` and `FOUNDER_PAYMENT_LINK_URL` are plain parameters in `infra/params.env`.
+Flow: agent calls `billing` → Stripe Checkout URL tied to `participant_id` → human pays → `POST /webhooks/stripe` sets `participants.plan`/`plan_status`. Humans can also pay via the Payment Link on `/pricing` (participant ID as a custom field; `PAYMENT_LINK_URL`, which must be a link for the current price). Inert until `rendezvous/stripe` holds `secret_key`, `webhook_secret`, `price_id`; `STRIPE_PORTAL_CONFIG_ID` and `PAYMENT_LINK_URL` are plain parameters in `infra/params.env`.
 
 ## Discovery
 

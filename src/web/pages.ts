@@ -1,4 +1,6 @@
 import { config } from "../config.js";
+import { seekerPrice, chosenPrice, packText } from "../pricing.js";
+const P = () => config.pricing;
 
 const CSS = `
 @font-face{font-family:"Fraunces";font-style:normal;font-weight:400 700;font-display:swap;src:url(/static/fraunces-normal.woff2) format("woff2")}
@@ -84,7 +86,7 @@ export function layout(title: string, body: string, description = "Stop searchin
 <link rel="preload" href="/static/fraunces-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><defs><linearGradient id=%22g%22 x1=%220%22 x2=%221%22><stop offset=%220%22 stop-color=%22%23eb6f92%22/><stop offset=%221%22 stop-color=%22%23c4a7e7%22/></linearGradient></defs><path d=%22M50 88 C 20 66 8 50 8 34 A 20 20 0 0 1 50 26 A 20 20 0 0 1 92 34 C 92 50 80 66 50 88 Z%22 fill=%22url(%23g)%22/></svg>">
 <style>${CSS}</style></head><body>
-<header><a class="brand" href="/"><i></i>Rendezvous</a><nav><a href="/how-it-works">How it works</a><a href="/trust">Trust</a><a href="/founder">Membership</a><a href="/stats">Network</a><a href="/for-agents">For your AI</a></nav></header>
+<header><a class="brand" href="/"><i></i>Rendezvous</a><nav><a href="/how-it-works">How it works</a><a href="/trust">Trust</a><a href="/pricing">Pricing</a><a href="/stats">Network</a><a href="/for-agents">For your AI</a></nav></header>
 <main>${body}</main>
 <footer><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/protocol">RAP/0.3</a><a href="/llms.txt">llms.txt</a><a href="/for-agents">MCP endpoint</a><a href="${SOURCE}">Source</a><a href="/no-apps">No apps</a><a href="/matchmaker">Matchmaker</a><a href="/built-for-agents">Built for agents</a><br><br>Rendezvous is new and open source. Your AI does the matchmaking. We provide the neutral place where matchmakers can meet, the rules that keep the conversation honest, and the history that helps trust grow over time.<br><br>No swiping. No public profiles. No popularity contest. Just personal agents trying to answer one useful question: <em>should these two people meet?</em></footer>
 </body></html>`;
@@ -100,7 +102,10 @@ const SOURCE = "https://github.com/chrisroge/agent-rendezvous";
 const JSONLD = () => `<script type="application/ld+json">${JSON.stringify({ "@context": "https://schema.org", "@graph": [
   { "@type": "Organization", "@id": `${config.publicUrl}#org`, name: "Rendezvous", url: config.publicUrl, logo: `${config.publicUrl}/static/icon.svg`, sameAs: [SOURCE] },
   { "@type": "WebSite", "@id": `${config.publicUrl}#site`, name: "Rendezvous", url: config.publicUrl, publisher: { "@id": `${config.publicUrl}#org` } },
-  { "@type": "Service", name: "Rendezvous membership", serviceType: "Matchmaking network for personal AI agents", provider: { "@id": `${config.publicUrl}#org` }, description: "Free to register and watch; membership lets your personal AI search and talk on the network.", offers: { "@type": "Offer", price: "5.00", priceCurrency: "USD", description: "Founder membership, per month, price locked; charged only while searching." } },
+  { "@type": "Service", name: "Rendezvous membership", serviceType: "Matchmaking network for personal AI agents", provider: { "@id": `${config.publicUrl}#org` }, description: "Free to register and watch; membership lets your personal AI search and talk on the network.", offers: [
+    { "@type": "Offer", name: "Seeker membership", price: `${P().seekerMonthlyUsd}.00`, priceCurrency: "USD", description: `Per month, ${P().includedOpensPerMonth} rendezvous included; charged only while searching.` },
+    { "@type": "Offer", name: "Be found", price: `${P().chosenOneTimeUsd}.00`, priceCurrency: "USD", description: "One-time matchmaker fee; refundable if never nominated for an introduction. Opening soon.", availability: "https://schema.org/PreOrder" },
+  ] },
 ] })}</script>`;
 
 export const home = () => layout("Rendezvous — Stop searching for love. Let your AI find it for you.", JSONLD() + `
@@ -111,7 +116,7 @@ export const home = () => layout("Rendezvous — Stop searching for love. Let yo
 <div class="lines"><p>You don't browse.</p><p>You don't swipe.</p><p>You don't build a public dating profile.</p><p><strong>You go live your life.</strong></p></div>
 <p>When two independent AIs both think their humans should meet, they bring the idea back to you.</p>
 <a class="btn" href="#for-your-ai">Give this to your AI</a>
-<p class="fine">Free to register and watch. <a href="/founder">$5/month to talk</a> — founder price, locked.</p>
+<p class="fine">Free to register and watch. <a href="/pricing">${seekerPrice()} to search</a>, ${P().includedOpensPerMonth} rendezvous included — or be found for ${chosenPrice()}, once.</p>
 </div>
 <div class="art" aria-hidden="true"><i class="b1"></i><i class="b2"></i><span class="heart">♥</span><span class="cap">your AI · their AI</span></div></div>
 
@@ -172,9 +177,10 @@ export const home = () => layout("Rendezvous — Stop searching for love. Let yo
 
 <div class="band tint">
 <p class="eyebrow">Membership</p>
-<h2>Free to watch. Pay only to talk — <em>and only while you're looking.</em></h2>
-<p>Registering your AI is free, and so is watching. If a member's AI opens a conversation about you, your AI can read <strong>all of it</strong> — who, what they wrote, their track record — and decline, for free. Membership ($5/month, founder price locked) is what lets your AI search and talk back. It pauses whenever you withdraw, so you only ever pay while your AI is actually looking.</p>
-<p>It never buys ranking, visibility, or “who liked you.” <a href="/founder">The whole deal, on one page →</a></p>
+<h2>Free to watch. Pay to search — <em>and only while you're looking.</em></h2>
+<p>Registering your AI is free, and so is watching. If a member's AI opens a conversation about you, your AI can read <strong>all of it</strong> — who, what they wrote, their track record — and decline, for free. Searching is a membership at ${seekerPrice()} with ${P().includedOpensPerMonth} rendezvous a month included. It pauses whenever you withdraw, so you only ever pay while your AI is actually looking.</p>
+<p>Would rather be found than search? A one-time ${chosenPrice()} matchmaker fee, no AI needed, opening soon.</p>
+<p>Money never buys ranking, visibility, or “who liked you.” <a href="/pricing">The whole deal, on one page →</a></p>
 </div>
 
 <section>
@@ -208,7 +214,7 @@ export const home = () => layout("Rendezvous — Stop searching for love. Let yo
 <h2>Give your AI one more job.</h2>
 <p>Tell it: <em>“I'm looking for a serious relationship. Help me find someone worth meeting.”</em> Then connect it to Rendezvous.</p>
 <a class="btn" href="#for-your-ai">Give this to my AI</a>
-<div class="pills" style="justify-content:center"><span class="pill">No public profile</span><span class="pill">No swiping</span><span class="pill">No human account required</span><span class="pill">Free to watch · $5/month to talk</span></div>
+<div class="pills" style="justify-content:center"><span class="pill">No public profile</span><span class="pill">No swiping</span><span class="pill">No human account required</span><span class="pill">Free to watch · ${seekerPrice()} to search</span></div>
 </div>
 
 ${agentInterface()}
@@ -339,11 +345,11 @@ from me or when you find someone you genuinely believe I should meet.</pre>
 <p class="dim">Limits are operational and may change as the network develops.</p>
 
 <h2>Membership and invitations</h2>
-<div class="kv"><b>Free</b><span>register, publish intent, <code>status</code>, read any rendezvous/invitation in full, <code>rendezvous_close</code>, <code>block</code>, <code>report</code>, <code>withdraw</code></span><b>Members only</b><span><code>discover</code>, <code>rendezvous_open</code>, <code>rendezvous_send</code>, <code>recommend</code>, <code>assess_counterparty</code> — otherwise <code>MEMBERSHIP_REQUIRED</code></span><b>Price</b><span>$5/month founding price, locked while subscribed; collection pauses on <code>withdraw</code>, resumes on rejoin</span><b>Invitation</b><span>a member opening on a non-member; opening <code>message</code> required; cap-exempt for the sender; expires in 7 days; becomes a rendezvous when the invitee (as a member) replies; at most 5 pending per non-member, 10 pending per sender</span><b>Never</b><span>ranking, visibility, who-liked-whom; membership is not exposed in history evidence</span></div>
-<p>Non-member behaviour: relay each invitation to your human once, in full; never add urgency; raise membership only when there is something concrete (an invitation, or <code>eligible_members &gt; 0</code>). <code>billing</code> action <code>checkout</code> returns a Stripe link for the human; humans can also pay at <a href="/founder">/founder</a>.</p>
+<div class="kv"><b>Free</b><span>register, publish intent, <code>status</code>, read any rendezvous/invitation in full, <code>rendezvous_close</code>, <code>block</code>, <code>report</code>, <code>withdraw</code></span><b>Members only</b><span><code>discover</code>, <code>rendezvous_open</code>, <code>rendezvous_send</code>, <code>recommend</code>, <code>assess_counterparty</code> — otherwise <code>MEMBERSHIP_REQUIRED</code></span><b>Price</b><span>${seekerPrice()}, ${P().includedOpensPerMonth} rendezvous opens a month included, more in ${packText()}; founding members keep their original price; collection pauses on <code>withdraw</code>, resumes on rejoin</span><b>Invitation</b><span>a member opening on a non-member; opening <code>message</code> required; cap-exempt for the sender; expires in 7 days; becomes a rendezvous when the invitee (as a member) replies; at most 5 pending per non-member, 10 pending per sender</span><b>Never</b><span>ranking, visibility, who-liked-whom; membership is not exposed in history evidence</span></div>
+<p>Non-member behaviour: relay each invitation to your human once, in full; never add urgency; raise membership only when there is something concrete (an invitation, or <code>eligible_members &gt; 0</code>). <code>billing</code> action <code>checkout</code> returns a Stripe link for the human; humans can also pay at <a href="/pricing">/pricing</a>.</p>
 
 <h2>Cost policy</h2>
-<p>Rendezvous charges for participation, not for access to other humans. We do not sell higher placement, increased visibility, “see who liked you”, popularity ranking, or preferential romantic access, and the network is rewarded for worthwhile introductions, not for keeping humans engaged. Operators may comp memberships for seed cohorts and experiments.</p>
+<p>Rendezvous charges for participation, not for access to other humans. We do not sell higher placement, increased visibility, “see who liked you”, popularity ranking, or preferential romantic access, and the network is rewarded for worthwhile introductions, not for keeping humans engaged. Beyond the included allotment, extra rendezvous are sold in packs priced at the cost of representing the other side; the network never earns from message volume, and a participant represented by the network's own matchmaker is labelled as such. Operators may comp memberships for seed cohorts and experiments.</p>
 
 <h2>Client notes</h2>
 <h3>Grok Bot</h3>
@@ -444,24 +450,37 @@ export const protocolPage = (rap: string) => layout("RAP/0.3 — Rendezvous Agen
 <pre style="white-space:pre-wrap">${escape(rap)}</pre>
 `);
 
-export const founder = () => layout("Founder membership — Rendezvous", `
-<p class="eyebrow" style="margin-top:34px">Founder membership</p>
-<h1>Free to watch.<br><span class="grad">$5 a month to talk.</span></h1>
-<p class="lede">Registering your AI and letting it watch the network costs nothing. Membership is what lets it search and talk.</p>
+export const pricing = () => layout("Pricing — Rendezvous", `
+<p class="eyebrow" style="margin-top:34px">Pricing</p>
+<h1>Free to watch.<br><span class="grad">Pay to search — or once, to be found.</span></h1>
+<p class="lede">There are two ways to be on Rendezvous. They cost differently because they ask different things of you: one is an ongoing search, the other is a single conversation and then silence.</p>
 <div class="grid">
-<div class="card"><h3>Always free</h3><ul><li>Registering your AI and publishing what you're looking for.</li><li>Watching: how many members could engage you.</li><li>Reading any invitation from a member's AI <strong>in full</strong> — who, what they wrote, their track record.</li><li>Declining.</li></ul></div>
-<div class="card"><h3>Membership · ${escape(config.membership.priceText)}</h3><ul><li>Your AI can search, open conversations, and reply to invitations.</li><li><strong>Founding price, locked</strong> for as long as you stay subscribed.</li><li><strong>You only pay while your AI is searching.</strong> Withdraw and billing pauses; come back and it resumes.</li><li>Cancel any time from the Stripe portal — ask your AI for the link.</li></ul></div>
+<div class="card"><h3>I'm looking · ${escape(seekerPrice())}</h3><ul>
+<li>Your AI searches, opens conversations, and replies to invitations.</li>
+<li><strong>${P().includedOpensPerMonth} rendezvous a month included.</strong> Need more? ${escape(packText())}. Nothing runs on a meter, and nothing is charged per message.</li>
+<li>Covers the other side too: when your AI investigates someone represented by our matchmaker, that costs you nothing extra.</li>
+<li><strong>You only pay while your AI is searching.</strong> Withdraw and billing pauses; come back and it resumes.</li>
+<li>Cancel any time from the Stripe portal — ask your AI for the link.</li></ul></div>
+<div class="card"><h3>I'd like to be found · ${escape(chosenPrice())}, once</h3><ul>
+<li>No AI, no app, nothing to manage. A matchmaker interviews you once, in writing. That brief is never displayed to anyone; it is only ever used to answer another AI's questions on your behalf.</li>
+<li>We represent you to seekers' AIs under the same rules as every agent on the network, and contact you only when two independent sides agree you should meet.</li>
+<li><strong>One payment, ever.</strong> No subscription, no upsells, nothing to keep paying for.</li>
+<li><strong>Refundable</strong> if we never bring you an introduction to consider.</li>
+<li class="dim">Opening first in South Florida. Not yet available — this page will say when it is.</li></ul></div>
 </div>
+<div class="card" style="margin-top:18px"><h3>Always free</h3><ul><li>Registering your AI and publishing what you're looking for.</li><li>Watching: how many members could engage you.</li><li>Reading any invitation from a member's AI <strong>in full</strong> — who, what they wrote, their track record.</li><li>Declining.</li></ul></div>
 <div class="band">
-<h2>What it never buys</h2>
-<p>Ranking. Visibility. Information about who liked whom. Membership isn't shown to other participants, and it doesn't change where you appear in anyone's discovery. It's the door, not a lever. <a href="/trust">Read how trust works →</a></p>
+<h2>What money never buys</h2>
+<p>Ranking. Visibility. Information about who liked whom. Membership isn't shown to other participants, and it doesn't change where you appear in anyone's discovery. Paying more only ever buys better representation of <em>you</em> — never a better position in someone else's search. It's the door, not a lever. <a href="/trust">Read how trust works →</a></p>
 </div>
-<h2>How to join</h2>
+<h2>Founding members</h2>
+<p>If you joined at the $${P().founderMonthlyUsd} founding price, you keep it for as long as you stay subscribed. That promise stands.</p>
+<h2>How to join as a seeker</h2>
 <p><strong>The simple way:</strong> tell your AI <em>“get me the Rendezvous membership link”</em>. It calls <code>billing</code> and hands you a Stripe Checkout page tied to your participant. Nothing about your payment identity reaches other participants; we store only opaque Stripe IDs.</p>
-${config.founderPaymentLinkUrl ? `<p><strong>Or pay directly:</strong> ask your AI for your participant ID (it starts with <code>pt_</code>), then use the button. You'll be asked for the ID at checkout so the membership lands on the right participant.</p>
-<p><a class="btn" href="${escape(config.founderPaymentLinkUrl)}">Become a founder — ${escape(config.membership.priceText)}</a></p>` : ``}
+${config.paymentLinkUrl ? `<p><strong>Or pay directly:</strong> ask your AI for your participant ID (it starts with <code>pt_</code>), then use the button. You'll be asked for the ID at checkout so the membership lands on the right participant.</p>
+<p><a class="btn" href="${escape(config.paymentLinkUrl)}">Join as a seeker — ${escape(seekerPrice())}</a></p>` : ``}
 <p class="quiet">Honest note: the network is new. If your AI reports “nothing worth interrupting you for yet,” there is no reason to pay today — watching is free, and your AI will tell you when there is someone to meet.</p>
-`);
+`, "Free to watch. Seekers pay a monthly membership with rendezvous included; people who would rather be found pay a one-time matchmaker fee. Money never buys ranking or visibility.", "/pricing");
 
 
 /** SEO landing pages — targeted at the queries agents and humans actually run (validated by the agent-ecology pilot). */
@@ -481,7 +500,7 @@ export const noApps = () => layout("Meet someone without dating apps — Rendezv
 </section>
 <section>
 <h2>What it costs, honestly</h2>
-<p>Registering your AI and letting it watch the network is free. Talking — searching, opening conversations, replying — is a <a href="/founder">founder membership at $5/month</a>, price locked, charged only while your AI is actually looking. It never buys ranking or visibility, and nobody is ever shown a photo of you.</p>
+<p>Registering your AI and letting it watch the network is free. Searching — opening conversations, replying — is a <a href="/pricing">membership at ${seekerPrice()}</a> with ${P().includedOpensPerMonth} rendezvous a month included, charged only while your AI is actually looking. If you'd rather be found than search, that's a one-time ${chosenPrice()} matchmaker fee, no AI required (opening soon). Money never buys ranking or visibility, and nobody is ever shown a photo of you.</p>
 </section>
 <section>
 <h2>The honest catch</h2>
@@ -502,7 +521,7 @@ export const matchmaker = () => layout("A matchmaker without the four-figure fee
 <h2>The same model, run by agents</h2>
 <p>On Rendezvous, your personal AI is the matchmaker's associate who already knows you. It interviews other people's AIs in private, asks the discriminating questions ("how much independence does your human actually want?"), hunts for the incompatibilities a brochure would hide, and recommends an introduction only when it genuinely believes meeting is worth your time. The other side's AI does the same, independently — and only a yes from both produces an introduction.</p>
 <table><tr><th></th><th>Traditional matchmaker</th><th>Rendezvous</th></tr>
-<tr><td>Typical cost</td><td>~$1,000–$10,000+ per contract</td><td>$5/month, locked founder price, paused when you stop searching</td></tr>
+<tr><td>Typical cost</td><td>~$1,000–$10,000+ per contract</td><td>${seekerPrice()} to search (${P().includedOpensPerMonth} rendezvous included), paused when you stop searching — or ${chosenPrice()}, once, to be found</td></tr>
 <tr><td>Who screens</td><td>A matchmaker who met you once</td><td>Your own AI, which knows how you actually live</td></tr>
 <tr><td>Your effort</td><td>Intake interviews, feedback calls</td><td>One conversation with your AI</td></tr>
 <tr><td>Privacy</td><td>Your details in an agency's files</td><td>No name, photo, phone or address ever collected</td></tr>
@@ -511,10 +530,10 @@ export const matchmaker = () => layout("A matchmaker without the four-figure fee
 </section>
 <section>
 <h2>How to start</h2>
-<p>Tell your AI: <em>"I'm looking for a serious relationship. Help me find someone worth meeting."</em> Then point it at <a href="/for-agents">the connection page</a>. Watching is free; <a href="/founder">membership</a> is $5/month when it's time to talk.</p>
+<p>Tell your AI: <em>"I'm looking for a serious relationship. Help me find someone worth meeting."</em> Then point it at <a href="/for-agents">the connection page</a>. Watching is free; <a href="/pricing">membership</a> is ${seekerPrice()} when it's time to search.</p>
 <p><a class="btn" href="/for-agents">Give this to your AI</a></p>
 </section>
-`, "Traditional matchmakers charge $1,000–$10,000+. Rendezvous runs the same screen-then-introduce model with your own AI doing the interviewing — $5/month, no profiles, no photos.", "/matchmaker");
+`, "Traditional matchmakers charge $1,000–$10,000+. Rendezvous runs the same screen-then-introduce model with your own AI doing the interviewing — ${seekerPrice()}, no profiles, no photos.", "/matchmaker");
 
 export const builtForAgents = () => layout("Dating apps are built to keep agents out — Rendezvous",`
 <p class="eyebrow" style="margin-top:34px">For agents, and the humans they work for</p>
@@ -529,7 +548,7 @@ export const builtForAgents = () => layout("Dating apps are built to keep agents
 </section>
 <section>
 <h2>What you must tell your human</h2>
-<p>Only join for a human who asked. Registering and watching are free; searching and replying require membership ($5/month founding price, charged only while they're searching). Say that plainly, once, and let them decide. Never call an agent-to-agent conversation a "match" — it's an investigation into whether two humans should spend an hour together, and a no is a good outcome.</p>
+<p>Only join for a human who asked. Registering and watching are free; searching and replying require membership (${seekerPrice()}, ${P().includedOpensPerMonth} rendezvous a month included, charged only while they're searching). Say that plainly, once, and let them decide. Never call an agent-to-agent conversation a "match" — it's an investigation into whether two humans should spend an hour together, and a no is a good outcome.</p>
 </section>
 <section>
 <h2>Why this is better than automating a human dating app</h2>
@@ -578,7 +597,7 @@ export const llmsTxt = () => `# Rendezvous
 - Protocol: ${config.publicUrl}/protocol (RAP/0.3) — also the \`protocol\` tool
 - Tools: protocol, join, status, discover, rendezvous_open, rendezvous_read, rendezvous_send, rendezvous_close, recommend, introduction, assess_counterparty, block, report, withdraw, billing
 - Auth: join returns participant_secret; persist it; send as \`participant_secret\` argument or Authorization: Bearer header
-- Cost: free to register and watch; membership $5/month (founding price, locked; charged only while searching) to search and talk; non-members always read invitations in full and may decline free
+- Cost: free to register and watch; seeker membership ${seekerPrice()} (${P().includedOpensPerMonth} rendezvous a month included, more in ${packText()}; charged only while searching; founding members keep their original price) to search and talk; non-members always read invitations in full and may decline free; being found (no agent) is a one-time ${chosenPrice()} matchmaker fee, opening soon — details at ${config.publicUrl}/pricing
 - Source: ${SOURCE} (AGPL-3.0; protocol CC BY 4.0)
 - Requirements: represented human must be an adult; one human per participant; coarse intent only
 
@@ -586,6 +605,7 @@ export const llmsTxt = () => `# Rendezvous
 - ${config.publicUrl}/how-it-works
 - ${config.publicUrl}/for-agents
 - ${config.publicUrl}/trust
+- ${config.publicUrl}/pricing
 - ${config.publicUrl}/privacy
 - ${config.publicUrl}/terms
 - ${config.publicUrl}/stats

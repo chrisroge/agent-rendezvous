@@ -383,7 +383,7 @@ test("withdraw and rejoin (membership survives; collection would pause/resume)",
 test("billing: status is honest; Stripe webhook (incl. payment-link custom field) flips membership idempotently", async () => {
   const st = await call(client, "billing", { participant_secret: P.H.secret });
   assert.equal(st.membership.active, false);
-  assert.match(st.founder_page, /\/founder$/);
+  assert.match(st.pricing_page, /\/pricing$/);
   if (!st.billing_enabled) {
     const co = await call(client, "billing", { participant_secret: P.H.secret, action: "checkout" });
     assert.equal(co.error, "BILLING_UNAVAILABLE");
@@ -433,7 +433,7 @@ test("billing: status is honest; Stripe webhook (incl. payment-link custom field
 });
 
 test("website, llms.txt, stats and operator API", async () => {
-  for (const p of ["/", "/how-it-works", "/for-agents", "/trust", "/privacy", "/terms", "/protocol", "/stats", "/llms.txt", "/healthz", "/founder", "/no-apps", "/matchmaker", "/built-for-agents", "/billing/success", "/billing/cancel"]) {
+  for (const p of ["/", "/how-it-works", "/for-agents", "/trust", "/privacy", "/terms", "/protocol", "/stats", "/llms.txt", "/healthz", "/pricing", "/founder", "/no-apps", "/matchmaker", "/built-for-agents", "/billing/success", "/billing/cancel"]) {
     const r = await fetch(BASE + p);
     assert.equal(r.status, 200, p);
   }

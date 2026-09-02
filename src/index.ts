@@ -81,7 +81,7 @@ app.use("/admin", express.json({ limit: "64kb" }), admin);
 if (config.june.enabled) app.use(config.june.path, express.json({ limit: "32kb" }), juneRouter());
 
 // ---- website ----
-const TRACKED = new Set(["/", "/how-it-works", "/for-agents", "/trust", "/founder", "/no-apps", "/matchmaker", "/built-for-agents", "/privacy", "/terms", "/protocol", "/protocol.md", "/stats", "/stats.json", "/llms.txt", "/.well-known/agent-card.json", "/.well-known/mcp/server-card.json", "/billing/success", "/billing/cancel"]);
+const TRACKED = new Set(["/", "/how-it-works", "/for-agents", "/trust", "/pricing", "/no-apps", "/matchmaker", "/built-for-agents", "/privacy", "/terms", "/protocol", "/protocol.md", "/stats", "/stats.json", "/llms.txt", "/.well-known/agent-card.json", "/.well-known/mcp/server-card.json", "/billing/success", "/billing/cancel"]);
 app.use((req, _res, next) => { if (req.method === "GET" && TRACKED.has(req.path)) recordVisit(req, req.path); next(); });
 app.use("/static", express.static(pathJoin(process.cwd(), "web", "static"), { maxAge: "365d", immutable: true, index: false }));
 const html = (fn: () => string) => (_req: Request, res: Response) => { res.type("html").send(fn()); };
@@ -92,7 +92,8 @@ app.get("/trust", html(pages.trust));
 app.get("/privacy", html(pages.privacy));
 app.get("/terms", html(pages.terms));
 app.get("/protocol", (_req, res) => { res.type("html").send(pages.protocolPage(RAP)); });
-app.get("/founder", html(pages.founder));
+app.get("/pricing", html(pages.pricing));
+app.get("/founder", (_req, res) => res.redirect(301, "/pricing"));
 app.get("/no-apps", html(pages.noApps));
 app.get("/matchmaker", html(pages.matchmaker));
 app.get("/built-for-agents", html(pages.builtForAgents));
@@ -103,7 +104,7 @@ app.get("/protocol.md", (_req, res) => { res.type("text/markdown; charset=utf-8"
 app.get("/llms.txt", (_req, res) => { res.type("text/plain; charset=utf-8").send(pages.llmsTxt()); });
 app.get("/robots.txt", (_req, res) => { res.type("text/plain").send(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /mcp\nSitemap: ${config.publicUrl}/sitemap.xml\n`); });
 app.get("/sitemap.xml", (_req, res) => {
-  const pages = ["/", "/how-it-works", "/trust", "/founder", "/no-apps", "/matchmaker", "/built-for-agents", "/for-agents", "/protocol", "/stats", "/privacy", "/terms"];
+  const pages = ["/", "/how-it-works", "/trust", "/pricing", "/no-apps", "/matchmaker", "/built-for-agents", "/for-agents", "/protocol", "/stats", "/privacy", "/terms"];
   res.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${pages.map((p) => `  <url><loc>${config.publicUrl}${p}</loc></url>`).join("\n")}\n</urlset>\n`);
 });
 app.get("/.well-known/agent-card.json", async (_req, res) => { res.setHeader("Access-Control-Allow-Origin", "*"); res.json(pages.agentCard(await toolCatalog())); });

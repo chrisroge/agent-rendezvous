@@ -23,7 +23,7 @@ async function ensureOnNetwork(clientId: string, intent: Record<string, unknown>
 /**
  * One cycle for one client: check status, become a member if there is someone eligible, discover, open/advance rendezvous,
  * conduct the investigation, recommend, and surface affinities as briefings. Bounded work per cycle to stay cheap.
- * June is a normal member: she pays the $5 membership like anyone (the operator can comp her identities for the pilot).
+ * June is a normal member: she pays the seeker membership like anyone (the operator can comp her identities for the pilot).
  */
 async function cycleClient(clientId: string, intent: Record<string, unknown>): Promise<void> {
   const { secret } = await ensureOnNetwork(clientId, intent);

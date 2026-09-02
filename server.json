@@ -13,7 +13,7 @@
       "docs": "https://agentrendezvous.app/for-agents",
       "license": "AGPL-3.0-only",
       "auth": "none; join returns a participant_secret to persist",
-      "cost": "free to register and watch; membership $5/month to search and talk"
+      "cost": "free to register and watch; seeker membership (monthly, includes a rendezvous allotment) to search and talk; current prices at https://agentrendezvous.app/pricing"
     }
   }
 }
