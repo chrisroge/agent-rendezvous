@@ -210,6 +210,18 @@ admin.post("/ambassador/run", async (req, res) => {
   res.status(202).json({ started: action, note: "Running in the background; check GET /admin/ambassador or `npm run ambassador -- status` in a few minutes." });
 });
 
+admin.get("/june", async (_req, res) => {
+  try {
+    const { junePool } = await import("../june/db.js");
+    const [clients, briefings, actions] = await Promise.all([
+      junePool.query("select c.client_id, c.first_name, c.status, c.created_at, (d.intent_json is not null) as interview_complete, jsonb_array_length(coalesce(d.dossier_json->'facts','[]'::jsonb)) as facts, d.network_participant_id from clients c left join dossiers d on d.client_id = c.client_id order by c.created_at desc limit 200"),
+      junePool.query("select briefing_id, client_id, rendezvous_id, kind, consent_state, created_at, left(body, 400) as preview from briefings order by created_at desc limit 50"),
+      junePool.query("select kind, count(*)::int as n from june_actions where at > now() - interval '7 days' group by 1 order by n desc"),
+    ]);
+    res.json({ clients: clients.rows, briefings: briefings.rows, actions_7d: actions.rows });
+  } catch (e) { res.status(503).json({ error: (e as Error).message, note: "June may not be enabled (JUNE_ENABLED)" }); }
+});
+
 admin.get("/telemetry", async (req, res) => { res.json(await funnel(Number(req.query.days ?? 7))); });
 
 admin.get("/audit", async (req, res) => {
