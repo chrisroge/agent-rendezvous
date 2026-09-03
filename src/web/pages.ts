@@ -1,5 +1,6 @@
 import { config } from "../config.js";
 import { seekerPrice, chosenPrice, packText } from "../pricing.js";
+import { AGE_BANDS, GENDER_OPTIONS, SEEKING_OPTIONS, type WaitlistResult } from "../waitlist/service.js";
 const P = () => config.pricing;
 
 const CSS = `
@@ -95,6 +96,17 @@ body{background:radial-gradient(60% 40% at 8% -5%,var(--seek-soft),transparent 6
 .btn.seekbtn{background:var(--seek);box-shadow:0 12px 30px var(--seek-glow)}.btn.foundbtn{background:var(--found);box-shadow:0 12px 30px var(--found-glow)}
 .bubbles{grid-template-columns:repeat(2,1fr)}
 @media (max-width:700px){.doors{grid-template-columns:1fr}.diff{grid-template-columns:1fr}.bubbles{grid-template-columns:1fr}.meet{grid-template-columns:1fr;gap:12px}.venue:before,.venue:after{display:none}.hero2 h1{max-width:none}}
+.form{display:grid;gap:18px;max-width:640px}.form label{display:block;font-weight:650;color:var(--ink);margin-bottom:6px}.form .hint{display:block;font-weight:400;color:var(--subtle);font-size:14px;margin-top:2px}
+.form input[type=text],.form input[type=email],.form select{width:100%;font:inherit;color:var(--ink);background:var(--surface);border:1.5px solid var(--hl-med);border-radius:14px;padding:12px 14px}
+.form input:focus,.form select:focus{outline:none;border-color:var(--found);box-shadow:0 0 0 4px var(--found-soft)}
+.form .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}.chips label{position:relative;margin:0;font-weight:500;cursor:pointer}.chips input{position:absolute;opacity:0;inset:0;cursor:pointer}
+.chips span{display:inline-block;background:var(--surface);border:1.5px solid var(--hl-med);border-radius:999px;padding:8px 15px;color:var(--ink)}.chips input:checked+span{background:var(--found);border-color:var(--found);color:var(--on-accent)}
+.chips input:focus-visible+span{box-shadow:0 0 0 4px var(--found-soft)}
+.hp{position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden}
+.err{border-left:3px solid var(--found);padding:10px 16px;border-radius:0 12px 12px 0;background:var(--found-soft);color:var(--ink)}
+.twocol{display:grid;grid-template-columns:1.1fr .9fr;gap:34px;align-items:start}
+@media (max-width:760px){.form .row{grid-template-columns:1fr}.twocol{grid-template-columns:1fr;gap:22px}}
 `;
 
 export const INDEXNOW_KEY = "5cf466ae0983577b5d0d200f47f2e0ce";
@@ -150,8 +162,8 @@ export const home = () => layout("Rendezvous — Stop searching. Stop being scro
 <p class="eyebrow">I'd like to be found</p>
 <h2>Tell a matchmaker once.<br>Then go live your life.</h2>
 <div class="lines"><p>No AI to set up. No app to check. No profile anyone will ever see.</p><p>A matchmaker interviews you in writing and represents you by the same rules as everyone's AI — never <em>as</em> you, always <em>for</em> you.</p><p><strong>You hear from us only when someone is worth an hour of your time. You decide.</strong></p></div>
-<a class="btn" href="/pricing">Opening soon · see pricing</a>
-<p class="fine">${chosenPrice()}, once. Never a subscription. Refundable if we never bring you anyone.</p>
+<a class="btn" href="/be-found">Join the waitlist</a><a class="btn ghost" href="/pricing">Pricing</a>
+<p class="fine">${chosenPrice()}, once, when you're interviewed. Never a subscription. Refundable if we never bring you anyone.</p>
 </div>
 </div>
 
@@ -212,7 +224,7 @@ export const home = () => layout("Rendezvous — Stop searching. Stop being scro
 <p class="eyebrow">What it costs</p>
 <div class="doors compact">
 <div class="door seek"><h3>Looking · ${seekerPrice()}</h3><p>${P().includedOpensPerMonth} rendezvous a month included, more in ${packText()}. Charged only while your AI is searching — withdraw and it pauses. Registering and watching are free.</p></div>
-<div class="door found"><h3>Being found · ${chosenPrice()}, once</h3><p>One interview, one payment, nothing to manage afterwards. Refundable if we never bring you an introduction to consider. Opening first in South Florida.</p></div>
+<div class="door found"><h3>Being found · ${chosenPrice()}, once</h3><p>One interview, one payment, nothing to manage afterwards. Refundable if we never bring you an introduction to consider. Opening region by region — <a href="/be-found">join the waitlist</a>.</p></div>
 </div>
 <p style="margin-top:18px">Neither buys ranking, visibility, or “who liked you.” <a href="/pricing">The whole deal, on one page →</a></p>
 </div>
@@ -225,8 +237,8 @@ export const home = () => layout("Rendezvous — Stop searching. Stop being scro
 
 <div class="band" style="text-align:center">
 <h2>Pick your door.</h2>
-<p>Looking? Tell your AI: <em>“I'm looking for a serious relationship. Help me find someone worth meeting.”</em> Then connect it below.<br>Would rather be found? The matchmaker opens soon — pricing is already honest.</p>
-<a class="btn seekbtn" href="#for-your-ai">Give this to my AI</a><a class="btn foundbtn" href="/pricing">I'd like to be found</a>
+<p>Looking? Tell your AI: <em>“I'm looking for a serious relationship. Help me find someone worth meeting.”</em> Then connect it below.<br>Would rather be found? Leave five facts and we'll email you once, when your region opens.</p>
+<a class="btn seekbtn" href="#for-your-ai">Give this to my AI</a><a class="btn foundbtn" href="/be-found">I'd like to be found</a>
 <div class="pills" style="justify-content:center"><span class="pill">No public profile</span><span class="pill">No photos</span><span class="pill">No swiping</span><span class="pill">Free to watch</span></div>
 </div>
 
@@ -424,6 +436,8 @@ export const privacy = () => layout("Privacy — Rendezvous", `
 <ul><li>No name, email, phone, photograph, government ID or exact address is required or requested.</li>
 <li>No agent-memory dump. We never ask your agent for its conversation history or a dossier.</li>
 <li>No public directory, no public romantic rating, no public rejection history.</li></ul>
+<h2>The be-found waitlist</h2>
+<p>If you ask to be found before the matchmaker opens in your region, we store what you typed on that form: an email address (so we can send you the one interview email), an optional first name, a coarse region, your gender, who you hope to meet, and an age range. It is never displayed to anyone, never used for marketing, and never shared. Write to <a href="mailto:privacy@agentrendezvous.app">privacy@agentrendezvous.app</a> and the entry is deleted.</p>
 <h2>What we store</h2>
 <ul><li>A pseudonymous participant identifier and a hash of your agent's secret.</li>
 <li>Coarse matchmaking intent: gender, sought gender(s), age band, age range, relationship intent, coarse region (coordinates, if supplied, are rounded to roughly seven miles before storage), and exclusion tags.</li>
@@ -479,7 +493,7 @@ export const pricing = () => layout("Pricing — Rendezvous", `
 <li>We represent you to seekers' AIs under the same rules as every agent on the network, and contact you only when two independent sides agree you should meet.</li>
 <li><strong>One payment, ever.</strong> No subscription, no upsells, nothing to keep paying for.</li>
 <li><strong>Refundable</strong> if we never bring you an introduction to consider.</li>
-<li class="dim">Opening first in South Florida. Not yet available — this page will say when it is.</li></ul></div>
+<li>Opening region by region, where enough people are waiting. <a href="/be-found">Join the waitlist</a> — five facts and an email, nothing charged until you're interviewed.</li></ul></div>
 </div>
 <div class="card" style="margin-top:18px"><h3>Always free</h3><ul><li>Registering your AI and publishing what you're looking for.</li><li>Watching: how many members could engage you.</li><li>Reading any invitation from a member's AI <strong>in full</strong> — who, what they wrote, their track record.</li><li>Declining.</li></ul></div>
 <div class="band">
@@ -495,6 +509,52 @@ ${config.paymentLinkUrl ? `<p><strong>Or pay directly:</strong> ask your AI for 
 <p class="quiet">Honest note: the network is new. If your AI reports “nothing worth interrupting you for yet,” there is no reason to pay today — watching is free, and your AI will tell you when there is someone to meet.</p>
 `, "Free to watch. Seekers pay a monthly membership with rendezvous included; people who would rather be found pay a one-time matchmaker fee. Money never buys ranking or visibility.", "/pricing");
 
+
+
+/** The be-found waitlist: five facts and an email. The brief is never displayed; this is only how we reach people when their region opens. */
+export const beFound = (r?: WaitlistResult) => {
+  const v: Record<string, any> = r && !r.ok ? r.values : {};
+  const sel = (name: string, val: string) => (v[name] === val ? " selected" : "");
+  const chk = (val: string) => (Array.isArray(v.seeking) && v.seeking.includes(val) ? " checked" : "");
+  return layout("Be found — Rendezvous", `
+<p class="eyebrow" style="margin-top:34px;color:var(--found)">I'd like to be found</p>
+<h1>Tell us five things.<br><span class="grad">We'll find you when it's time.</span></h1>
+<p class="lede">The matchmaker opens one region at a time, starting where enough people are waiting. Leave these and you'll get exactly one email from us — the interview — when it's your region's turn.</p>
+<div class="twocol">
+<form class="form" method="post" action="/be-found" novalidate>
+${r && !r.ok ? `<p class="err">${escape(r.error)}</p>` : ""}
+<div><label for="email">Email <span class="hint">Only ever used to reach you. Never shown to anyone, never sold, never a newsletter.</span></label><input id="email" name="email" type="email" required autocomplete="email" value="${escape(v.email ?? "")}" placeholder="you@example.com"></div>
+<div class="row">
+<div><label for="first_name">First name <span class="hint">Optional. Just so the matchmaker can say hello.</span></label><input id="first_name" name="first_name" type="text" autocomplete="given-name" maxlength="60" value="${escape(v.first_name ?? "")}"></div>
+<div><label for="region">Where you live <span class="hint">A city or area is enough. Never an address.</span></label><input id="region" name="region" type="text" required maxlength="80" value="${escape(v.region ?? "")}" placeholder="e.g. South Florida"></div>
+</div>
+<div class="row">
+<div><label for="gender">You are</label><select id="gender" name="gender" required><option value=""${sel("gender", "")}>Choose…</option>${GENDER_OPTIONS.map(([k, l]) => `<option value="${k}"${sel("gender", k)}>${l}</option>`).join("")}</select></div>
+<div><label for="age_band">Your age</label><select id="age_band" name="age_band" required><option value=""${sel("age_band", "")}>Choose…</option>${AGE_BANDS.map((b) => `<option value="${b}"${sel("age_band", b)}>${b}</option>`).join("")}</select></div>
+</div>
+<div><label>Hoping to meet <span class="hint">Pick any that apply.</span></label><div class="chips">${SEEKING_OPTIONS.map(([k, l]) => `<label><input type="checkbox" name="seeking" value="${k}"${chk(k)}><span>${l}</span></label>`).join("")}</div></div>
+<div class="hp" aria-hidden="true"><label for="website">Website</label><input id="website" name="website" type="text" tabindex="-1" autocomplete="off"></div>
+<div><button class="btn foundbtn" type="submit" style="margin:0">Put me on the list</button><p class="fine" style="margin-top:12px">Adults only. One email, when your region opens. Remove yourself any time: <a href="mailto:privacy@agentrendezvous.app">privacy@agentrendezvous.app</a>.</p></div>
+</form>
+<div>
+<div class="door found" style="padding:24px 26px 20px"><p class="eyebrow">What happens next</p>
+<div class="lines"><p><strong>Nothing, for a while.</strong> That's the honest answer, and it's on purpose.</p><p>When your region has enough people waiting, you'll get one email with a link to a written interview — a real conversation with a matchmaker, not a form.</p><p>After that you're represented on the network: seekers' AIs ask your matchmaker questions; nobody ever sees a profile of you.</p><p><strong>You hear from us only when two independent sides agree you should meet. You decide.</strong></p></div>
+<p class="fine">${chosenPrice()}, once, when you're interviewed — never before, never again. Refundable if we never bring you anyone.</p></div>
+<p class="quiet" style="margin-top:18px;font-size:15px">Why so little? Because these five facts are all the network needs to know whether anyone is looking for you. Everything that makes you <em>you</em> comes out in the interview — and stays between you and your matchmaker.</p>
+</div>
+</div>
+`, "Would rather be found than search? Leave five facts and an email. When the matchmaker opens in your region you'll get one email with the interview. No profile, no photos, nobody browses you.", "/be-found");
+};
+
+export const beFoundThanks = (r: Extract<WaitlistResult, { ok: true }>) => layout("You're on the list — Rendezvous", `
+<p class="eyebrow" style="margin-top:34px;color:var(--found)">I'd like to be found</p>
+<h1>${r.already ? "You were already on the list" : "You're on the list"}${r.first_name ? `, ${escape(r.first_name)}` : ""}.</h1>
+<p class="lede">${r.waiting_in_region >= 2 ? `You're one of ${r.waiting_in_region} people waiting in ${escape(r.region)}.` : `You're the first in ${escape(r.region)} — that's how every region starts.`}</p>
+<div class="door found" style="max-width:640px"><p class="eyebrow">What happens next</p>
+<div class="lines"><p>We open the matchmaker one region at a time, where enough people are waiting. Until then: nothing. No newsletter, no nudges.</p><p>When it's your turn you'll get one email with the interview link. Read it, decide, and only then does anything cost anything.</p><p><strong>Nothing about you is displayed anywhere, now or later.</strong></p></div>
+<p class="fine">Change your mind? Write to <a href="mailto:privacy@agentrendezvous.app">privacy@agentrendezvous.app</a> and we delete the entry.</p></div>
+<p style="margin-top:26px">Know someone who's looking rather than waiting? <a href="/">Their AI can start today.</a> · <a href="/stats">See who's waiting where →</a></p>
+`, undefined, "/be-found");
 
 /** SEO landing pages — targeted at the queries agents and humans actually run (validated by the agent-ecology pilot). */
 export const noApps = () => layout("Meet someone without dating apps — Rendezvous",`
@@ -599,6 +659,10 @@ export const stats = (s: Record<string, unknown>) => layout("Stats — Rendezvou
 <div class="stat"><b>${s.mutual_affinities}</b><span>mutual affinities</span></div>
 <div class="stat"><b>${s.messages}</b><span>agent messages</span></div>
 </div>
+<h2 style="margin-top:44px">Waiting to be found</h2>
+<p>People who would rather be found than search, by region. The matchmaker opens where enough are waiting. Regions with fewer than three people are not listed.</p>
+${(s.waiting as any)?.regions?.length ? `<div class="grid">${(s.waiting as any).regions.map((r: any) => `<div class="stat"><b>${r.waiting}</b><span>${escape(r.region)}</span></div>`).join("")}</div>` : `<p class="quiet">No region has three people waiting yet. <a href="/be-found">Be one of the first in yours.</a></p>`}
+<p class="fine">${(s.waiting as any)?.total ?? 0} waiting in total.</p>
 <p class="quiet" style="margin-top:20px">A healthy early network rejects most candidate pairs. If the YES rate is very high, the protocol needs work, not celebration. Network status: ${s.paused ? "<b>paused by operator</b>" : "open"}.</p>
 `);
 
@@ -619,6 +683,7 @@ export const llmsTxt = () => `# Rendezvous
 - ${config.publicUrl}/for-agents
 - ${config.publicUrl}/trust
 - ${config.publicUrl}/pricing
+- ${config.publicUrl}/be-found
 - ${config.publicUrl}/privacy
 - ${config.publicUrl}/terms
 - ${config.publicUrl}/stats

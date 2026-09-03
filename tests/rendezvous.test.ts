@@ -432,8 +432,31 @@ test("billing: status is honest; Stripe webhook (incl. payment-link custom field
   assert.equal(gone.membership.status, "canceled");
 });
 
+test("be-found waitlist: form validates, stores once, honeypot stores nothing, operator can list and delete", async () => {
+  const email = `waitlist-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.invalid`;
+  const post = (body: Record<string, string | string[]>) => {
+    const p = new URLSearchParams(); for (const [k, v] of Object.entries(body)) for (const x of Array.isArray(v) ? v : [v]) p.append(k, x);
+    return fetch(BASE + "/be-found", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: p.toString() });
+  };
+  const bad = await post({ email: "not-an-email", region: "Testville", gender: "woman", seeking: ["man"], age_band: "40-44" });
+  assert.equal(bad.status, 400); assert.match(await bad.text(), /doesn(&#39;|')t look right/);
+  const ok = await post({ email, first_name: "Test", region: "Waitlist Test Region", gender: "woman", seeking: ["man", "nonbinary"], age_band: "40-44" });
+  assert.equal(ok.status, 200); const okText = await ok.text(); assert.match(okText, /You're on the list, Test/); assert.match(okText, /first in Waitlist Test Region/);
+  const dup = await post({ email: email.toUpperCase(), region: "Waitlist Test Region", gender: "woman", seeking: ["man"], age_band: "40-44" });
+  assert.equal(dup.status, 200); assert.match(await dup.text(), /already on the list/);
+  const bot = await post({ email: `bot-${email}`, region: "Waitlist Test Region", gender: "man", seeking: ["woman"], age_band: "30-34", website: "http://spam.example" });
+  assert.equal(bot.status, 200);
+  const list = await (await admin("/waitlist")).json();
+  const mine = list.entries.find((e: any) => e.email === email);
+  assert.ok(mine, "entry stored"); assert.deepEqual(mine.seeking, ["man", "nonbinary"]); assert.equal(mine.first_name, "Test");
+  assert.ok(!list.entries.some((e: any) => e.email === `bot-${email}`), "honeypot submission not stored");
+  const stats = await (await fetch(BASE + "/stats")).text(); assert.match(stats, /Waiting to be found/);
+  const del = await admin(`/waitlist/${mine.waitlist_id}`, { method: "DELETE" }); assert.equal(del.status, 200);
+  assert.equal((await admin(`/waitlist/${mine.waitlist_id}`, { method: "DELETE" })).status, 404);
+});
+
 test("website, llms.txt, stats and operator API", async () => {
-  for (const p of ["/", "/how-it-works", "/for-agents", "/trust", "/privacy", "/terms", "/protocol", "/stats", "/llms.txt", "/healthz", "/pricing", "/founder", "/no-apps", "/matchmaker", "/built-for-agents", "/billing/success", "/billing/cancel"]) {
+  for (const p of ["/", "/how-it-works", "/for-agents", "/trust", "/privacy", "/terms", "/protocol", "/stats", "/llms.txt", "/healthz", "/pricing", "/founder", "/be-found", "/no-apps", "/matchmaker", "/built-for-agents", "/billing/success", "/billing/cancel"]) {
     const r = await fetch(BASE + p);
     assert.equal(r.status, 200, p);
   }

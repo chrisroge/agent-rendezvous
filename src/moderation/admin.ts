@@ -5,6 +5,7 @@ import { safeEqual } from "../participants/ids.js";
 import { trustEvent } from "../participants/service.js";
 import * as ambassador from "../ambassador/run.js";
 import { funnel } from "../telemetry.js";
+import { waitlistAdminView, removeFromWaitlist } from "../waitlist/service.js";
 
 /** Operator API. Bearer OPERATOR_TOKEN. Kill switches: disable participant, close rendezvous, pause network. */
 export const admin = Router();
@@ -18,6 +19,9 @@ admin.use((req: Request, res: Response, next: NextFunction) => {
   }
   next();
 });
+
+admin.get("/waitlist", async (_req, res) => { res.json(await waitlistAdminView()); });
+admin.delete("/waitlist/:id", async (req, res) => { const removed = await removeFromWaitlist(String(req.params.id)); res.status(removed ? 200 : 404).json({ removed }); });
 
 admin.get("/stats", async (_req, res) => {
   const r = await pool.query(`select
