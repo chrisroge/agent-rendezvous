@@ -432,7 +432,7 @@ test("billing: status is honest; Stripe webhook (incl. payment-link custom field
   assert.equal(gone.membership.status, "canceled");
 });
 
-test("be-found waitlist: form validates, stores once, honeypot stores nothing, operator can list and delete", async () => {
+test("be-found waitlist: form validates, stores once, honeypot stores nothing, operator can invite, interview link gates, list and delete", async () => {
   const email = `waitlist-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.invalid`;
   const post = (body: Record<string, string | string[]>) => {
     const p = new URLSearchParams(); for (const [k, v] of Object.entries(body)) for (const x of Array.isArray(v) ? v : [v]) p.append(k, x);
@@ -451,6 +451,20 @@ test("be-found waitlist: form validates, stores once, honeypot stores nothing, o
   assert.ok(mine, "entry stored"); assert.deepEqual(mine.seeking, ["man", "nonbinary"]); assert.equal(mine.first_name, "Test");
   assert.ok(!list.entries.some((e: any) => e.email === `bot-${email}`), "honeypot submission not stored");
   const stats = await (await fetch(BASE + "/stats")).text(); assert.match(stats, /Waiting to be found/);
+  // Invite → single-use interview link (mail may be disabled: the link is returned to the operator either way).
+  const inv = await (await admin(`/waitlist/${mine.waitlist_id}/invite`, { method: "POST" })).json();
+  assert.match(inv.url, /\/interview\/iv_/); assert.equal(inv.already, false);
+  const again = await (await admin(`/waitlist/${mine.waitlist_id}/invite`, { method: "POST" })).json(); assert.equal(again.already, true, "second invite does not mint a second link");
+  const token = inv.url.split("/interview/")[1];
+  const pg = await fetch(BASE + "/interview/" + token); assert.equal(pg.status, 200); assert.match(await pg.text(), /One conversation/);
+  const sess = await (await fetch(BASE + "/interview/" + token + "/session", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).json();
+  assert.equal(sess.status, "invited"); assert.equal(sess.history[0].role, "matchmaker"); assert.match(sess.history[0].content, /Hi Test/);
+  const badTok = await fetch(BASE + "/interview/iv_notarealtoken00000000/session", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }); assert.equal(badTok.status, 404);
+  const early = await fetch(BASE + "/interview/" + token + "/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }); assert.equal(early.status, 409, "cannot pay before the interview is complete");
+  const ivs = await (await admin("/interviews")).json(); assert.ok(ivs.interviews.some((x: any) => x.interview_id === inv.interview_id));
+  const one = await (await admin(`/interviews/${inv.interview_id}`)).json(); assert.equal(one.messages.length, 1);
+  assert.equal((await (await admin(`/interviews/${inv.interview_id}/close`, { method: "POST" })).json()).closed, true);
+  const closed = await fetch(BASE + "/interview/" + token + "/session", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }); assert.equal(closed.status, 404);
   const del = await admin(`/waitlist/${mine.waitlist_id}`, { method: "DELETE" }); assert.equal(del.status, 200);
   assert.equal((await admin(`/waitlist/${mine.waitlist_id}`, { method: "DELETE" })).status, 404);
 });

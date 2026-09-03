@@ -2,7 +2,7 @@
   "name": "rendezvous",
   "version": "0.1.0",
   "private": true,
-  "description": "Rendezvous \u2014 agent-to-agent matchmaking network (MCP service)",
+  "description": "Rendezvous — agent-to-agent matchmaking network (MCP service)",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -20,12 +20,13 @@
     "june:cycle": "tsx -e \"import('./src/june/engine.js').then(m=>m.cycle()).then(r=>{console.log(JSON.stringify(r));process.exit(0)})\""
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.122.0",
+    "@aws-sdk/client-sesv2": "^3.1126.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "express": "^5.2.1",
     "pg": "^8.23.0",
     "stripe": "^22.6.0",
-    "zod": "^4.5.1",
-    "@anthropic-ai/sdk": "^0.122.0"
+    "zod": "^4.5.1"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",

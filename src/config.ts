@@ -56,12 +56,25 @@ export const config = {
   stripePriceId: str("STRIPE_PRICE_ID", ""),
   stripeFounderPriceId: str("STRIPE_FOUNDER_PRICE_ID", "") || str("STRIPE_PRICE_ID", ""), // empty (CFN default) falls back to the current price
   stripePortalConfigId: str("STRIPE_PORTAL_CONFIG_ID", ""),
+  stripeRepresentedPriceId: str("STRIPE_REPRESENTED_PRICE_ID", ""), // one-time be-found price
   paymentLinkUrl: str("PAYMENT_LINK_URL", ""), // Stripe Payment Link for the current seeker price; must match pricing.seekerMonthlyUsd
   ambassador: {
     enabled: str("AMBASSADOR_ENABLED", "false") === "true",
     autoComments: str("AMBASSADOR_AUTO_COMMENTS", "false") === "true",
     anthropicApiKey: str("ANTHROPIC_API_KEY", ""),
     intervalMinutes: int("AMBASSADOR_INTERVAL_MINUTES", 180),
+  },
+  mail: {
+    from: str("MAIL_FROM", ""),                       // e.g. "Rendezvous <matchmaker@agentrendezvous.app>"; empty = mail disabled
+    replyTo: str("MAIL_REPLY_TO", "privacy@agentrendezvous.app"),
+    region: str("MAIL_REGION", str("AWS_REGION", "us-east-2")),
+  },
+  interview: {
+    model: str("INTERVIEW_MODEL", "claude-sonnet-5"),
+    matchmakerName: str("MATCHMAKER_NAME", ""),       // empty = "your matchmaker"
+    maxTurns: int("INTERVIEW_MAX_TURNS", 40),
+    dailyTurnCap: int("INTERVIEW_DAILY_TURN_CAP", 300),
+    linkDays: int("INTERVIEW_LINK_DAYS", 14),
   },
   june: {
     enabled: str("JUNE_ENABLED", "false") === "true",

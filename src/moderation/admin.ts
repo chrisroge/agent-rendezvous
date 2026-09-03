@@ -6,6 +6,9 @@ import { trustEvent } from "../participants/service.js";
 import * as ambassador from "../ambassador/run.js";
 import { funnel } from "../telemetry.js";
 import { waitlistAdminView, removeFromWaitlist } from "../waitlist/service.js";
+import { inviteFromWaitlist, inviteRegion, adminInterviews, adminInterview, closeInterview } from "../represented/service.js";
+import { normalizeRegion } from "../discovery/eligibility.js";
+import { mailEnabled } from "../mail/ses.js";
 
 /** Operator API. Bearer OPERATOR_TOKEN. Kill switches: disable participant, close rendezvous, pause network. */
 export const admin = Router();
@@ -21,6 +24,12 @@ admin.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 admin.get("/waitlist", async (_req, res) => { res.json(await waitlistAdminView()); });
+// Represented side: invite from the waitlist (one or a region), inspect interviews (ops/abuse only), close.
+admin.post("/waitlist/:id/invite", async (req, res) => { try { res.json({ mail_enabled: mailEnabled(), ...(await inviteFromWaitlist(String(req.params.id))) }); } catch (e) { res.status(404).json({ error: (e as Error).message }); } });
+admin.post("/waitlist/invite-region", async (req, res) => { const region = String(req.body?.region ?? ""); if (!region) { res.status(400).json({ error: "region required" }); return; } res.json({ mail_enabled: mailEnabled(), region_normalized: normalizeRegion(region), invited: await inviteRegion(normalizeRegion(region), Number(req.body?.limit ?? 25)) }); });
+admin.get("/interviews", async (_req, res) => { res.json(await adminInterviews()); });
+admin.get("/interviews/:id", async (req, res) => { const iv = await adminInterview(String(req.params.id)); if (!iv) { res.status(404).json({ error: "not found" }); return; } res.json(iv); });
+admin.post("/interviews/:id/close", async (req, res) => { res.json({ closed: await closeInterview(String(req.params.id)) }); });
 admin.delete("/waitlist/:id", async (req, res) => { const removed = await removeFromWaitlist(String(req.params.id)); res.status(removed ? 200 : 404).json({ removed }); });
 
 admin.get("/stats", async (_req, res) => {

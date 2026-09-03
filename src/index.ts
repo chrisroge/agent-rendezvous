@@ -12,6 +12,7 @@ import { sweepExpired } from "./rendezvous/service.js";
 import { sweepIntroductions } from "./rendezvous/introductions.js";
 import * as pages from "./web/pages.js";
 import { addToWaitlist, waitlistPublicSummary } from "./waitlist/service.js";
+import { interviewRouter } from "./represented/app.js";
 import { toolCatalog } from "./mcp/catalog.js";
 import { recordMcpEvent, recordVisit, ipHash } from "./telemetry.js";
 import { cycle as ambassadorCycle } from "./ambassador/run.js";
@@ -80,6 +81,9 @@ app.use("/admin", express.json({ limit: "64kb" }), admin);
 
 // ---- June (hosted matchmaker), mounted in-process; reaches the network only via the public MCP endpoint ----
 if (config.june.enabled) app.use(config.june.path, express.json({ limit: "32kb" }), juneRouter());
+
+// ---- represented side: the written interview behind a single-use emailed link ----
+app.use("/interview", express.json({ limit: "32kb" }), interviewRouter());
 
 // ---- website ----
 const TRACKED = new Set(["/", "/how-it-works", "/for-agents", "/trust", "/pricing", "/be-found", "/no-apps", "/matchmaker", "/built-for-agents", "/privacy", "/terms", "/protocol", "/protocol.md", "/stats", "/stats.json", "/llms.txt", "/.well-known/agent-card.json", "/.well-known/mcp/server-card.json", "/billing/success", "/billing/cancel"]);

@@ -120,6 +120,27 @@ export async function createCheckout(p: Participant) {
   };
 }
 
+/** One-time be-found payment at the end of a completed interview. Keyed by interview id in metadata; the webhook marks it paid. */
+export async function createRepresentedCheckout(interviewId: string, token: string): Promise<{ url: string | null; expires_at: string | null }> {
+  if (!stripe || !config.stripeWebhookSecret || !config.stripeRepresentedPriceId) throw new RvzError("BILLING_UNAVAILABLE", "Payment isn't available yet. Your interview is saved.");
+  const cur = await pool.query("select stripe_checkout_session_id from interviews where interview_id = $1", [interviewId]);
+  if (cur.rows[0]?.stripe_checkout_session_id) {
+    try { const s = await stripe.checkout.sessions.retrieve(cur.rows[0].stripe_checkout_session_id); if (s.status === "open" && s.url) return { url: s.url, expires_at: s.expires_at ? new Date(s.expires_at * 1000).toISOString() : null }; } catch { /* mint a new one */ }
+  }
+  const session = await stripeCall(() => stripe!.checkout.sessions.create({
+    mode: "payment",
+    line_items: [{ price: config.stripeRepresentedPriceId, quantity: 1 }],
+    client_reference_id: interviewId,
+    metadata: { interview_id: interviewId, project: "rendezvous", side: "represented" },
+    payment_intent_data: { metadata: { interview_id: interviewId }, statement_descriptor: "RENDEZVOUS" },
+    allow_promotion_codes: true,
+    success_url: `${config.publicUrl}/interview/${token}?paid=1`,
+    cancel_url: `${config.publicUrl}/interview/${token}`,
+  }));
+  await pool.query("update interviews set stripe_checkout_session_id = $2 where interview_id = $1", [interviewId, session.id]);
+  return { url: session.url, expires_at: session.expires_at ? new Date(session.expires_at * 1000).toISOString() : null };
+}
+
 export async function createPortal(p: Participant) {
   if (!billingEnabled()) throw unavailable();
   if (!p.stripe_customer_id) throw new RvzError("NOT_FOUND", "No billing relationship exists for this participant yet. Use billing action 'checkout' first.");
@@ -206,6 +227,14 @@ export async function applyEvent(event: Stripe.Event): Promise<{ duplicate: bool
         const customerId = typeof s.customer === "string" ? s.customer : s.customer?.id ?? null;
         const viaField = customFieldParticipant(s);
         participantId = (s.metadata?.participant_id ?? s.client_reference_id ?? null) || viaField || (await participantForCustomer(tx, customerId));
+        if (s.mode === "payment" && s.metadata?.interview_id) {
+          const pi = typeof s.payment_intent === "string" ? s.payment_intent : s.payment_intent?.id ?? null;
+          const r = await tx.query("update interviews set status = 'paid', paid_at = coalesce(paid_at, now()), stripe_payment_intent_id = coalesce($2, stripe_payment_intent_id) where interview_id = $1 and status in ('complete','paid') returning waitlist_id", [s.metadata.interview_id, pi]);
+          if (r.rowCount && r.rows[0].waitlist_id) await tx.query("update waitlist set status = 'joined' where waitlist_id = $1", [r.rows[0].waitlist_id]);
+          applied = (r.rowCount ?? 0) > 0;
+          participantId = null;
+          break;
+        }
         if (participantId && s.mode === "subscription") {
           const subId = typeof s.subscription === "string" ? s.subscription : s.subscription?.id ?? null;
           if (customerId) await tx.query("update participants set stripe_customer_id = coalesce(stripe_customer_id, $2) where participant_id = $1", [participantId, customerId]);

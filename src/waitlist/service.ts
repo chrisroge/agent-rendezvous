@@ -68,6 +68,8 @@ export async function waitlistAdminView() {
 }
 
 export async function removeFromWaitlist(id: string): Promise<boolean> {
+  // A deletion request removes the person entirely: unpaid interviews and their transcripts go with the entry.
+  await pool.query("delete from interviews where status <> 'paid' and waitlist_id in (select waitlist_id from waitlist where waitlist_id = $1 or email_norm = lower($1))", [id]);
   const r = await pool.query("delete from waitlist where waitlist_id = $1 or email_norm = lower($1)", [id]);
   return (r.rowCount ?? 0) > 0;
 }

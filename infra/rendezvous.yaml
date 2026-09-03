@@ -17,6 +17,9 @@ Parameters:
   DBAllocatedStorage: { Type: Number, Default: 20 }
   StripePortalConfigId: { Type: String, Default: "", Description: "Stripe customer-portal configuration to use (not secret); empty = account default" }
   PaymentLinkUrl: { Type: String, Default: "", Description: "Stripe Payment Link for the CURRENT seeker price, shown on /pricing (not secret); empty hides the button" }
+  MailFrom: { Type: String, Default: "", Description: "From address for transactional mail via SES, e.g. 'Rendezvous <matchmaker@agentrendezvous.app>'; empty disables mail" }
+  InterviewModel: { Type: String, Default: "claude-sonnet-5", Description: "Model for the be-found interview" }
+  MatchmakerName: { Type: String, Default: "", Description: "Name the matchmaker persona uses; empty = 'your matchmaker'" }
   StripeFounderPriceId: { Type: String, Default: "", Description: "Stripe price id of the original $5 founding membership (not secret); founding members are recognised by it after price_id moves to the new price. Empty = same as price_id" }
   AmbassadorEnabled: { Type: String, Default: "false", AllowedValues: ["true", "false"], Description: "Run the Moltbook ambassador scheduler in the app" }
   AmbassadorAutoComments: { Type: String, Default: "false", AllowedValues: ["true", "false"], Description: "Publish comments without founder approval (charter: only after 30 clean days)" }
@@ -159,6 +162,14 @@ Resources:
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement: [{ Effect: Allow, Principal: { Service: ecs-tasks.amazonaws.com }, Action: sts:AssumeRole }]
+      Policies:
+        - PolicyName: send-mail
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [ses:SendEmail, ses:SendRawEmail]
+                Resource: !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${DomainName}"
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
@@ -187,6 +198,9 @@ Resources:
             - { Name: STRIPE_PORTAL_CONFIG_ID, Value: !Ref StripePortalConfigId }
             - { Name: PAYMENT_LINK_URL, Value: !Ref PaymentLinkUrl }
             - { Name: STRIPE_FOUNDER_PRICE_ID, Value: !Ref StripeFounderPriceId }
+            - { Name: MAIL_FROM, Value: !Ref MailFrom }
+            - { Name: INTERVIEW_MODEL, Value: !Ref InterviewModel }
+            - { Name: MATCHMAKER_NAME, Value: !Ref MatchmakerName }
             - { Name: AMBASSADOR_ENABLED, Value: !Ref AmbassadorEnabled }
             - { Name: AMBASSADOR_AUTO_COMMENTS, Value: !Ref AmbassadorAutoComments }
             - { Name: JUNE_ENABLED, Value: !Ref JuneEnabled }
@@ -197,6 +211,7 @@ Resources:
             - { Name: STRIPE_SECRET_KEY, ValueFrom: !Sub "${StripeSecret}:secret_key::" }
             - { Name: STRIPE_WEBHOOK_SECRET, ValueFrom: !Sub "${StripeSecret}:webhook_secret::" }
             - { Name: STRIPE_PRICE_ID, ValueFrom: !Sub "${StripeSecret}:price_id::" }
+            - { Name: STRIPE_REPRESENTED_PRICE_ID, ValueFrom: !Sub "${StripeSecret}:represented_price_id::" }
             - { Name: ANTHROPIC_API_KEY, ValueFrom: !Sub "${AmbassadorSecret}:anthropic_api_key::" }
           LogConfiguration:
             LogDriver: awslogs
