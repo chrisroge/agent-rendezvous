@@ -9,6 +9,7 @@ import { waitlistAdminView, removeFromWaitlist } from "../waitlist/service.js";
 import { inviteFromWaitlist, inviteRegion, adminInterviews, adminInterview, closeInterview } from "../represented/service.js";
 import { normalizeRegion } from "../discovery/eligibility.js";
 import { mailEnabled } from "../mail/ses.js";
+import { cycle as representativeCycle, representativeView, briefingsView, reissueConsentLink } from "../represented/representative.js";
 
 /** Operator API. Bearer OPERATOR_TOKEN. Kill switches: disable participant, close rendezvous, pause network. */
 export const admin = Router();
@@ -27,6 +28,10 @@ admin.get("/waitlist", async (_req, res) => { res.json(await waitlistAdminView()
 // Represented side: invite from the waitlist (one or a region), inspect interviews (ops/abuse only), close.
 admin.post("/waitlist/:id/invite", async (req, res) => { try { res.json({ mail_enabled: mailEnabled(), ...(await inviteFromWaitlist(String(req.params.id))) }); } catch (e) { res.status(404).json({ error: (e as Error).message }); } });
 admin.post("/waitlist/invite-region", async (req, res) => { const region = String(req.body?.region ?? ""); if (!region) { res.status(400).json({ error: "region required" }); return; } res.json({ mail_enabled: mailEnabled(), region_normalized: normalizeRegion(region), invited: await inviteRegion(normalizeRegion(region), Number(req.body?.limit ?? 25)) }); });
+admin.get("/representative", async (_req, res) => { res.json(await representativeView()); });
+admin.post("/representative/run", async (_req, res) => { representativeCycle().catch(() => {}); res.json({ started: true, note: "Runs asynchronously; check GET /admin/representative for actions." }); });
+admin.get("/briefings", async (_req, res) => { res.json(await briefingsView()); });
+admin.post("/briefings/:id/link", async (req, res) => { const r = await reissueConsentLink(String(req.params.id), req.body?.email !== false); if (!r) { res.status(404).json({ error: "not found or already decided" }); return; } res.json(r); });
 admin.get("/interviews", async (_req, res) => { res.json(await adminInterviews()); });
 admin.get("/interviews/:id", async (req, res) => { const iv = await adminInterview(String(req.params.id)); if (!iv) { res.status(404).json({ error: "not found" }); return; } res.json(iv); });
 admin.post("/interviews/:id/close", async (req, res) => { res.json({ closed: await closeInterview(String(req.params.id)) }); });

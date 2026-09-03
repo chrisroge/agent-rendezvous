@@ -13,6 +13,8 @@ import { sweepIntroductions } from "./rendezvous/introductions.js";
 import * as pages from "./web/pages.js";
 import { addToWaitlist, waitlistPublicSummary } from "./waitlist/service.js";
 import { interviewRouter } from "./represented/app.js";
+import { consentRouter } from "./represented/consent.js";
+import { cycle as representativeCycle } from "./represented/representative.js";
 import { toolCatalog } from "./mcp/catalog.js";
 import { recordMcpEvent, recordVisit, ipHash } from "./telemetry.js";
 import { cycle as ambassadorCycle } from "./ambassador/run.js";
@@ -84,6 +86,7 @@ if (config.june.enabled) app.use(config.june.path, express.json({ limit: "32kb" 
 
 // ---- represented side: the written interview behind a single-use emailed link ----
 app.use("/interview", express.json({ limit: "32kb" }), interviewRouter());
+app.use("/introduction", consentRouter());
 
 // ---- website ----
 const TRACKED = new Set(["/", "/how-it-works", "/for-agents", "/trust", "/pricing", "/be-found", "/no-apps", "/matchmaker", "/built-for-agents", "/privacy", "/terms", "/protocol", "/protocol.md", "/stats", "/stats.json", "/llms.txt", "/.well-known/agent-card.json", "/.well-known/mcp/server-card.json", "/billing/success", "/billing/cancel"]);
@@ -169,10 +172,16 @@ async function main() {
     ? setInterval(() => { juneCycle().then((r) => log({ msg: "june cycle", ...r })).catch((e) => log({ level: "error", msg: "june cycle failed", error: e.message })); }, config.june.cycleMinutes * 60 * 1000)
     : null;
   if (juneTimer) log({ msg: "june scheduler on", every_minutes: config.june.cycleMinutes });
+  // The representative: answers seekers' agents for interviewed people; bounded model calls per cycle and per day.
+  const representativeTimer = config.representative.enabled
+    ? setInterval(() => { representativeCycle().catch((e) => log({ level: "error", msg: "representative cycle failed", error: e.message })); }, config.representative.intervalMinutes * 60 * 1000)
+    : null;
+  if (representativeTimer) log({ msg: "representative scheduler on", every_minutes: config.representative.intervalMinutes });
   const shutdown = (sig: string) => {
     log({ msg: "shutting down", sig });
     clearInterval(sweeper);
     if (ambassadorTimer) clearInterval(ambassadorTimer);
+    if (representativeTimer) clearInterval(representativeTimer);
     if (juneTimer) clearInterval(juneTimer);
     server.close(() => { pool.end().finally(() => process.exit(0)); });
     setTimeout(() => process.exit(0), 8000).unref();

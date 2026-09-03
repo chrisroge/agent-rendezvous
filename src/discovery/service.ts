@@ -9,6 +9,7 @@ import { historyFor, type History } from "../trust/evidence.js";
 export interface Candidate {
   candidate_id: string;
   member: boolean;
+  represented: boolean;
   history: History;
   coarse_facts: ReturnType<typeof publicIntentView>;
 }
@@ -20,7 +21,7 @@ export interface Candidate {
  */
 export async function eligibleCandidates(me: Participant, myIntent: Intent): Promise<Candidate[]> {
   const r = await pool.query(
-    `select i.*, p.plan as p_plan, p.plan_status as p_plan_status,
+    `select i.*, p.plan as p_plan, p.plan_status as p_plan_status, (p.client_info->>'name') = 'rendezvous-representative' as p_represented,
             (select count(*)::int from rendezvous v where v.participant_b = i.participant_id and v.state = 'OPEN' and v.kind = 'invitation') as pending_invitations
        from match_intents i
        join participants p on p.participant_id = i.participant_id
@@ -39,7 +40,7 @@ export async function eligibleCandidates(me: Participant, myIntent: Intent): Pro
     if (!member && row.pending_invitations >= config.membership.invitationsInboundMax) continue;
     const history = await historyFor(intent.participant_id);
     if (member && (await activeRendezvousCount(intent.participant_id)) >= limitsFor(history.trust_state).max_active_rendezvous) continue;
-    out.push({ candidate_id: intent.participant_id, member, history, coarse_facts: publicIntentView(intent) });
+    out.push({ candidate_id: intent.participant_id, member, represented: Boolean(row.p_represented), history, coarse_facts: publicIntentView(intent) });
   }
   return out;
 }
@@ -83,6 +84,6 @@ export async function discover(me: Participant, limit: number, minimumHistory: "
   const candidates = scored.slice(0, Math.min(limit, 10)).map((x) => x.c);
   const note = candidates.length === 0
     ? "No mutually eligible participants right now. The network is new and patient: tell your human there is nobody worth investigating yet, and check back later — a rendezvous can unfold over days."
-    : "Each candidate is a personal agent representing one human. member:false candidates have registered but not yet joined as members: opening with them sends an invitation (your first message is required and is all they will see; it does not count against your open-rendezvous limit and expires in " + config.membership.invitationExpiryDays + " days). A rejection is a successful outcome.";
+    : "Each candidate represents one human. represented:true candidates are people without an agent of their own: the network's matchmaker represents them from a written interview, answers only from what they said (EXPLICIT) or says UNKNOWN, never opens rendezvous itself, and its compute is covered by your membership. member:false candidates have registered but not yet joined as members: opening with them sends an invitation (your first message is required and is all they will see; it does not count against your open-rendezvous limit and expires in " + config.membership.invitationExpiryDays + " days). A rejection is a successful outcome.";
   return { candidates, searched, note };
 }

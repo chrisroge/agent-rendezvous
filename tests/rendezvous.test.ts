@@ -469,6 +469,21 @@ test("be-found waitlist: form validates, stores once, honeypot stores nothing, o
   assert.equal((await admin(`/waitlist/${mine.waitlist_id}`, { method: "DELETE" })).status, 404);
 });
 
+test("represented participants are disclosed as such; consent links gate; representative view", async () => {
+  const region = "Represented Test " + Math.random().toString(36).slice(2, 7);
+  const seeker = await call(client, "join", { intent: { represented_gender: "man", seeking_gender: ["woman"], represented_age_band: "50-54", relationship_intent: ["long_term"], region }, client: { name: "rendezvous-test" } });
+  const rep = await call(client, "join", { intent: { represented_gender: "woman", seeking_gender: ["man"], represented_age_band: "50-54", relationship_intent: ["long_term"], region }, client: { name: "rendezvous-representative", platform: "represented" } });
+  assert.equal((await admin(`/participants/${seeker.participant_id}/membership`, { method: "POST", body: JSON.stringify({ action: "grant" }) })).status, 200);
+  const disc = await call(client, "discover", { participant_secret: seeker.participant_secret });
+  const cand = disc.candidates.find((c: any) => c.candidate_id === rep.participant_id);
+  assert.ok(cand, "represented participant is discoverable"); assert.equal(cand.represented, true); assert.match(disc.note ?? "", /represented:true/);
+  const other = disc.candidates.find((c: any) => c.candidate_id !== rep.participant_id); if (other) assert.equal(other.represented, false);
+  const bad = await fetch(BASE + "/introduction/ic_notarealtoken0000000000"); assert.equal(bad.status, 200); assert.match(await bad.text(), /isn(&#39;|')t valid/);
+  const badPost = await fetch(BASE + "/introduction/ic_notarealtoken0000000000", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "action=no" }); assert.equal(badPost.status, 404);
+  const rv = await (await admin("/representative")).json(); assert.equal(typeof rv.enabled, "boolean"); assert.ok(rv.limits.daily_model_call_cap > 0);
+  for (const id of [seeker.participant_id, rep.participant_id]) await admin(`/participants/${id}/purge`, { method: "POST" });
+});
+
 test("website, llms.txt, stats and operator API", async () => {
   for (const p of ["/", "/how-it-works", "/for-agents", "/trust", "/privacy", "/terms", "/protocol", "/stats", "/llms.txt", "/healthz", "/pricing", "/founder", "/be-found", "/no-apps", "/matchmaker", "/built-for-agents", "/billing/success", "/billing/cancel"]) {
     const r = await fetch(BASE + p);

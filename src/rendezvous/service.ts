@@ -65,8 +65,8 @@ async function recommendationFlags(db: Queryable, r: RvzRow, me: string) {
 }
 
 async function counterpartyView(db: Queryable, counterpartyId: string) {
-  const [history, intent] = await Promise.all([historyFor(counterpartyId, db), getIntent(counterpartyId, db)]);
-  return { participant_id: counterpartyId, history, coarse_facts: intent ? publicIntentView(intent) : null };
+  const [history, intent, rep] = await Promise.all([historyFor(counterpartyId, db), getIntent(counterpartyId, db), db.query("select (client_info->>'name') = 'rendezvous-representative' as r from participants where participant_id = $1", [counterpartyId])]);
+  return { participant_id: counterpartyId, represented: Boolean(rep.rows[0]?.r), history, coarse_facts: intent ? publicIntentView(intent) : null };
 }
 
 const PHASE_GUIDANCE: Record<string, string> = {
@@ -199,7 +199,7 @@ export async function openRendezvous(me: Participant, candidateId: string, messa
     }
     return {
       rendezvous_id: rendezvousId, kind, phase: "SCREEN", existing: false,
-      counterparty: { participant_id: candidateId, member: candidateIsMember, history: candHistory, coarse_facts: publicIntentView(rowToIntent(row)) },
+      counterparty: { participant_id: candidateId, member: candidateIsMember, represented: (await tx.query("select (client_info->>'name') = 'rendezvous-representative' as r from participants where participant_id = $1", [candidateId])).rows[0]?.r === true, history: candHistory, coarse_facts: publicIntentView(rowToIntent(row)) },
       opening_message: sent,
       ...(kind === "invitation" ? { invitation: { expires_at: expiresAt, note: `This is an invitation to a non-member. It does not count against your open-rendezvous limit and expires in ${config.membership.invitationExpiryDays} days unless they join and reply. You will not be told whether they saw it.` } } : {}),
       guidance: PHASE_GUIDANCE.SCREEN,

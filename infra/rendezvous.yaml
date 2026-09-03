@@ -19,6 +19,7 @@ Parameters:
   PaymentLinkUrl: { Type: String, Default: "", Description: "Stripe Payment Link for the CURRENT seeker price, shown on /pricing (not secret); empty hides the button" }
   MailFrom: { Type: String, Default: "", Description: "From address for transactional mail via SES, e.g. 'Rendezvous <matchmaker@agentrendezvous.app>'; empty disables mail" }
   InterviewModel: { Type: String, Default: "claude-sonnet-5", Description: "Model for the be-found interview" }
+  RepresentativeEnabled: { Type: String, Default: "false", AllowedValues: ["true", "false"], Description: "Run the representative scheduler (answers seekers' agents for interviewed people)" }
   MatchmakerName: { Type: String, Default: "", Description: "Name the matchmaker persona uses; empty = 'your matchmaker'" }
   StripeFounderPriceId: { Type: String, Default: "", Description: "Stripe price id of the original $5 founding membership (not secret); founding members are recognised by it after price_id moves to the new price. Empty = same as price_id" }
   AmbassadorEnabled: { Type: String, Default: "false", AllowedValues: ["true", "false"], Description: "Run the Moltbook ambassador scheduler in the app" }
@@ -201,6 +202,7 @@ Resources:
             - { Name: MAIL_FROM, Value: !Ref MailFrom }
             - { Name: INTERVIEW_MODEL, Value: !Ref InterviewModel }
             - { Name: MATCHMAKER_NAME, Value: !Ref MatchmakerName }
+            - { Name: REPRESENTATIVE_ENABLED, Value: !Ref RepresentativeEnabled }
             - { Name: AMBASSADOR_ENABLED, Value: !Ref AmbassadorEnabled }
             - { Name: AMBASSADOR_AUTO_COMMENTS, Value: !Ref AmbassadorAutoComments }
             - { Name: JUNE_ENABLED, Value: !Ref JuneEnabled }

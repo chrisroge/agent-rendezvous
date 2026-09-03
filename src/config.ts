@@ -76,6 +76,14 @@ export const config = {
     dailyTurnCap: int("INTERVIEW_DAILY_TURN_CAP", 300),
     linkDays: int("INTERVIEW_LINK_DAYS", 14),
   },
+  representative: {
+    enabled: str("REPRESENTATIVE_ENABLED", "false") === "true",
+    intervalMinutes: int("REPRESENTATIVE_INTERVAL_MINUTES", 60),
+    networkUrl: str("REPRESENTATIVE_NETWORK_URL", `${str("PUBLIC_URL", "https://agentrendezvous.app")}/mcp`),
+    maxModelCallsPerCycle: int("REPRESENTATIVE_MAX_CALLS_PER_CYCLE", 12),
+    dailyModelCallCap: int("REPRESENTATIVE_DAILY_CALL_CAP", 200),
+    maxRepliesPerRendezvous: int("REPRESENTATIVE_MAX_REPLIES", 8),
+  },
   june: {
     enabled: str("JUNE_ENABLED", "false") === "true",
     schedulerEnabled: str("JUNE_SCHEDULER_ENABLED", "false") === "true",
