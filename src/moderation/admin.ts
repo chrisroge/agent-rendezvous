@@ -30,7 +30,7 @@ admin.post("/waitlist/:id/invite", async (req, res) => { try { res.json({ mail_e
 admin.post("/waitlist/invite-region", async (req, res) => { const region = String(req.body?.region ?? ""); if (!region) { res.status(400).json({ error: "region required" }); return; } res.json({ mail_enabled: mailEnabled(), region_normalized: normalizeRegion(region), invited: await inviteRegion(normalizeRegion(region), Number(req.body?.limit ?? 25)) }); });
 // Mail: what the running task actually has configured, plus the recent send log. Used to verify a relay cutover.
 admin.get("/mail", async (_req, res) => {
-  const recent = await pool.query("select kind, status, provider_id, error, created_at from mail_log order by mail_id desc limit 25");
+  const recent = await pool.query("select kind, to_hash, status, provider_id, error, created_at from mail_log order by mail_id desc limit 25");
   const counts = await pool.query("select status, count(*)::int as n from mail_log where created_at > now() - interval '7 days' group by status");
   const suppressed = await pool.query("select reason, count(*)::int as n from mail_suppressions group by reason");
   res.json({ transport: mailTransport(), enabled: mailEnabled(), from: config.mail.from || null, reply_to: config.mail.replyTo || null,
@@ -40,6 +40,11 @@ admin.get("/mail", async (_req, res) => {
 });
 
 /** Send one real message through the configured transport, so a relay cutover can be proven from production. */
+admin.get("/mail/suppressions", async (_req, res) => {
+  const r = await pool.query("select email_hash, reason, detail, created_at from mail_suppressions order by created_at desc limit 500");
+  res.json({ total: r.rowCount, suppressions: r.rows, note: "Addresses are stored only as hashes. Lift one with DELETE /admin/mail/suppressions/<address or hash>." });
+});
+
 admin.delete("/mail/suppressions/:id", async (req, res) => {
   const id = String(req.params.id);
   const hash = /^[0-9a-f]{16}$/.test(id) ? id : emailHash(id);
