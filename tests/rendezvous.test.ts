@@ -493,6 +493,25 @@ test("operator mail view reports the configured transport; test send validates i
   assert.equal(bad.status, 400, "a malformed address is refused before any send");
 });
 
+test("mail delivery webhook: rejects unauthenticated, records events, suppresses hard bounces", async () => {
+  const addr = `bounce-${Date.now()}@example.invalid`;
+  const post = (body: Record<string, unknown>, auth?: string) => fetch(BASE + "/webhooks/postmark", {
+    method: "POST", headers: { "content-type": "application/json", ...(auth ? { Authorization: auth } : {}) }, body: JSON.stringify(body) });
+  assert.equal((await post({ RecordType: "Bounce", Email: addr })).status, 401, "no credentials");
+  assert.equal((await post({ RecordType: "Bounce", Email: addr }, "Basic " + Buffer.from("postmark:wrong").toString("base64"))).status, 401, "wrong password");
+  const good = "Basic " + Buffer.from(`postmark:${TOKEN}`).toString("base64");
+  const soft = await post({ RecordType: "Bounce", Type: "SoftBounce", Email: addr, Description: "mailbox full" }, good);
+  assert.equal(soft.status, 200); assert.equal((await soft.json()).suppressed, false, "a soft bounce does not suppress");
+  const hard = await post({ RecordType: "Bounce", Type: "HardBounce", Email: addr, Description: "does not exist" }, good);
+  assert.equal((await hard.json()).suppressed, true, "a hard bounce suppresses the address");
+  const blocked = await admin("/mail/test", { method: "POST", body: JSON.stringify({ to: addr }) });
+  assert.equal(blocked.status, 503, "a suppressed address is never mailed again");
+  assert.match((await blocked.json()).error ?? "", /suppressed/);
+  const view = await (await admin("/mail")).json();
+  assert.ok((view.suppressed?.hard_bounce ?? 0) >= 1);
+  assert.ok(view.recent.some((r: any) => r.status === "bounced"));
+});
+
 test("website, llms.txt, stats and operator API", async () => {
   for (const p of ["/", "/how-it-works", "/for-agents", "/trust", "/privacy", "/terms", "/protocol", "/stats", "/llms.txt", "/healthz", "/pricing", "/founder", "/be-found", "/no-apps", "/matchmaker", "/built-for-agents", "/billing/success", "/billing/cancel"]) {
     const r = await fetch(BASE + p);

@@ -16,16 +16,27 @@ const smtpTransport = () => (smtp ??= nodemailer.createTransport({ host: config.
 const smtpConfigured = () => Boolean(config.mail.smtp.host && config.mail.smtp.user && config.mail.smtp.pass);
 export const mailEnabled = () => Boolean(config.mail.from) && (config.mail.transport === "ses" || smtpConfigured());
 export const mailTransport = () => config.mail.transport;
-const toHash = (to: string) => createHash("sha256").update(to.trim().toLowerCase()).digest("hex").slice(0, 16);
+export const emailHash = (to: string) => createHash("sha256").update(to.trim().toLowerCase()).digest("hex").slice(0, 16);
+const toHash = emailHash;
+
+/** Addresses that hard-bounced or reported spam. Never mailed again; sending to them is what ruins a relay's reputation. */
+export async function isSuppressed(to: string): Promise<string | null> {
+  const r = await pool.query("select reason from mail_suppressions where email_hash = $1", [toHash(to)]);
+  return r.rows[0]?.reason ?? null;
+}
 
 export async function sendMail(m: { to: string; subject: string; text: string; html?: string; kind: string }): Promise<{ sent: boolean; id?: string; error?: string }> {
-  const log = (status: string, id?: string, error?: string) =>
-    pool.query("insert into mail_log(kind, to_hash, subject, status, provider_id, error) values ($1,$2,$3,$4,$5,$6)", [m.kind, toHash(m.to), m.subject, status, id ?? null, error ?? null]).catch(() => {});
+  const log = (status: string, id?: string, error?: string, response?: string) =>
+    pool.query("insert into mail_log(kind, to_hash, subject, status, provider_id, error, provider_response) values ($1,$2,$3,$4,$5,$6,$7)",
+      [m.kind, toHash(m.to), m.subject, status, id ?? null, error ?? null, response?.slice(0, 500) ?? null]).catch(() => {});
+  const suppressed = await isSuppressed(m.to);
+  if (suppressed) { await log("suppressed", undefined, suppressed); return { sent: false, error: `address suppressed (${suppressed})` }; }
   if (!mailEnabled()) { await log("disabled"); return { sent: false, error: config.mail.from ? "mail disabled (smtp credentials unset)" : "mail disabled (MAIL_FROM unset)" }; }
   try {
     if (config.mail.transport === "smtp") {
       const r = await smtpTransport().sendMail({ from: config.mail.from, to: m.to, replyTo: config.mail.replyTo || undefined, subject: m.subject, text: m.text, html: m.html, headers: { "X-Rendezvous-Kind": m.kind.replace(/[^a-z0-9_-]/gi, "_") } });
-      await log("sent", r.messageId);
+      // "accepted" not "delivered": the relay may still reject it asynchronously, which the bounce webhook records.
+      await log("accepted", r.messageId, undefined, r.response);
       return { sent: true, id: r.messageId };
     }
     const r = await ses().send(new SendEmailCommand({
@@ -35,7 +46,7 @@ export async function sendMail(m: { to: string; subject: string; text: string; h
       Content: { Simple: { Subject: { Data: m.subject, Charset: "UTF-8" }, Body: { Text: { Data: m.text, Charset: "UTF-8" }, ...(m.html ? { Html: { Data: m.html, Charset: "UTF-8" } } : {}) } } },
       EmailTags: [{ Name: "kind", Value: m.kind.replace(/[^a-z0-9_-]/gi, "_") }],
     }));
-    await log("sent", r.MessageId);
+    await log("accepted", r.MessageId);
     return { sent: true, id: r.MessageId };
   } catch (e) {
     const msg = (e as Error).message;

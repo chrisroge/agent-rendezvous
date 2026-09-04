@@ -13,6 +13,7 @@ import { sweepIntroductions } from "./rendezvous/introductions.js";
 import * as pages from "./web/pages.js";
 import { addToWaitlist, waitlistPublicSummary } from "./waitlist/service.js";
 import { interviewRouter } from "./represented/app.js";
+import { postmarkWebhook } from "./mail/webhook.js";
 import { consentRouter } from "./represented/consent.js";
 import { cycle as representativeCycle } from "./represented/representative.js";
 import { toolCatalog } from "./mcp/catalog.js";
@@ -77,6 +78,9 @@ app.delete("/mcp", (_req, res) => { res.status(405).set("Allow", "POST").json({ 
 
 // ---- billing (raw body for signature verification) ----
 app.post("/webhooks/stripe", express.raw({ type: "application/json", limit: "256kb" }), (req, res) => { stripeWebhook(req, res).catch((e) => { log({ level: "error", msg: "stripe webhook", error: (e as Error).message }); res.status(500).end(); }); });
+
+// ---- delivery events from the mail relay (HTTP Basic; password = operator token) ----
+app.post("/webhooks/postmark", express.json({ limit: "256kb" }), (req, res) => { postmarkWebhook(req, res).catch((e) => { log({ level: "error", msg: "postmark webhook", error: (e as Error).message }); res.status(500).json({ error: "internal" }); }); });
 
 // ---- operator ----
 app.use("/admin", express.json({ limit: "64kb" }), admin);

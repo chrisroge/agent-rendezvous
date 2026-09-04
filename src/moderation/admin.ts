@@ -32,7 +32,9 @@ admin.post("/waitlist/invite-region", async (req, res) => { const region = Strin
 admin.get("/mail", async (_req, res) => {
   const recent = await pool.query("select kind, status, provider_id, error, created_at from mail_log order by mail_id desc limit 25");
   const counts = await pool.query("select status, count(*)::int as n from mail_log where created_at > now() - interval '7 days' group by status");
+  const suppressed = await pool.query("select reason, count(*)::int as n from mail_suppressions group by reason");
   res.json({ transport: mailTransport(), enabled: mailEnabled(), from: config.mail.from || null, reply_to: config.mail.replyTo || null,
+    suppressed: Object.fromEntries(suppressed.rows.map((r) => [r.reason, r.n])),
     smtp_host: config.mail.smtp.host || null, smtp_port: config.mail.smtp.port, smtp_user_set: Boolean(config.mail.smtp.user), smtp_pass_set: Boolean(config.mail.smtp.pass),
     last_7d: Object.fromEntries(counts.rows.map((r) => [r.status, r.n])), recent: recent.rows });
 });
