@@ -8,7 +8,7 @@ import { funnel } from "../telemetry.js";
 import { waitlistAdminView, removeFromWaitlist } from "../waitlist/service.js";
 import { inviteFromWaitlist, inviteRegion, adminInterviews, adminInterview, closeInterview } from "../represented/service.js";
 import { normalizeRegion } from "../discovery/eligibility.js";
-import { mailEnabled } from "../mail/ses.js";
+import { mailEnabled, mailTransport, sendMail } from "../mail/ses.js";
 import { cycle as representativeCycle, representativeView, briefingsView, reissueConsentLink } from "../represented/representative.js";
 
 /** Operator API. Bearer OPERATOR_TOKEN. Kill switches: disable participant, close rendezvous, pause network. */
@@ -28,6 +28,25 @@ admin.get("/waitlist", async (_req, res) => { res.json(await waitlistAdminView()
 // Represented side: invite from the waitlist (one or a region), inspect interviews (ops/abuse only), close.
 admin.post("/waitlist/:id/invite", async (req, res) => { try { res.json({ mail_enabled: mailEnabled(), ...(await inviteFromWaitlist(String(req.params.id))) }); } catch (e) { res.status(404).json({ error: (e as Error).message }); } });
 admin.post("/waitlist/invite-region", async (req, res) => { const region = String(req.body?.region ?? ""); if (!region) { res.status(400).json({ error: "region required" }); return; } res.json({ mail_enabled: mailEnabled(), region_normalized: normalizeRegion(region), invited: await inviteRegion(normalizeRegion(region), Number(req.body?.limit ?? 25)) }); });
+// Mail: what the running task actually has configured, plus the recent send log. Used to verify a relay cutover.
+admin.get("/mail", async (_req, res) => {
+  const recent = await pool.query("select kind, status, provider_id, error, created_at from mail_log order by mail_id desc limit 25");
+  const counts = await pool.query("select status, count(*)::int as n from mail_log where created_at > now() - interval '7 days' group by status");
+  res.json({ transport: mailTransport(), enabled: mailEnabled(), from: config.mail.from || null, reply_to: config.mail.replyTo || null,
+    smtp_host: config.mail.smtp.host || null, smtp_port: config.mail.smtp.port, smtp_user_set: Boolean(config.mail.smtp.user), smtp_pass_set: Boolean(config.mail.smtp.pass),
+    last_7d: Object.fromEntries(counts.rows.map((r) => [r.status, r.n])), recent: recent.rows });
+});
+
+/** Send one real message through the configured transport, so a relay cutover can be proven from production. */
+admin.post("/mail/test", async (req, res) => {
+  const to = String(req.body?.to ?? "").trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(to)) { res.status(400).json({ error: "to: a valid email address is required" }); return; }
+  const { inviteEmail } = await import("../represented/emails.js");
+  const url = config.publicUrl + "/interview/iv_this-is-a-test-link-not-real";
+  const r = await sendMail({ kind: "operator_test", to, ...inviteEmail({ firstName: "Test", region: "your area", url, days: 14 }) });
+  res.status(r.sent ? 200 : 503).json({ transport: mailTransport(), ...r });
+});
+
 admin.get("/representative", async (_req, res) => { res.json(await representativeView()); });
 admin.post("/representative/run", async (_req, res) => { representativeCycle().catch(() => {}); res.json({ started: true, note: "Runs asynchronously; check GET /admin/representative for actions." }); });
 admin.get("/briefings", async (_req, res) => { res.json(await briefingsView()); });

@@ -484,6 +484,15 @@ test("represented participants are disclosed as such; consent links gate; repres
   for (const id of [seeker.participant_id, rep.participant_id]) await admin(`/participants/${id}/purge`, { method: "POST" });
 });
 
+test("operator mail view reports the configured transport; test send validates its input", async () => {
+  const m = await (await admin("/mail")).json();
+  assert.ok(["ses", "smtp"].includes(m.transport));
+  assert.equal(typeof m.enabled, "boolean");
+  assert.ok(Array.isArray(m.recent));
+  const bad = await admin("/mail/test", { method: "POST", body: JSON.stringify({ to: "not-an-address" }) });
+  assert.equal(bad.status, 400, "a malformed address is refused before any send");
+});
+
 test("website, llms.txt, stats and operator API", async () => {
   for (const p of ["/", "/how-it-works", "/for-agents", "/trust", "/privacy", "/terms", "/protocol", "/stats", "/llms.txt", "/healthz", "/pricing", "/founder", "/be-found", "/no-apps", "/matchmaker", "/built-for-agents", "/billing/success", "/billing/cancel"]) {
     const r = await fetch(BASE + p);
