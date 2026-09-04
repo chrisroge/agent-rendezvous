@@ -8,7 +8,7 @@ import { funnel } from "../telemetry.js";
 import { waitlistAdminView, removeFromWaitlist } from "../waitlist/service.js";
 import { inviteFromWaitlist, inviteRegion, adminInterviews, adminInterview, closeInterview } from "../represented/service.js";
 import { normalizeRegion } from "../discovery/eligibility.js";
-import { mailEnabled, mailTransport, sendMail } from "../mail/ses.js";
+import { mailEnabled, mailTransport, sendMail, emailHash } from "../mail/ses.js";
 import { cycle as representativeCycle, representativeView, briefingsView, reissueConsentLink } from "../represented/representative.js";
 
 /** Operator API. Bearer OPERATOR_TOKEN. Kill switches: disable participant, close rendezvous, pause network. */
@@ -40,6 +40,13 @@ admin.get("/mail", async (_req, res) => {
 });
 
 /** Send one real message through the configured transport, so a relay cutover can be proven from production. */
+admin.delete("/mail/suppressions/:id", async (req, res) => {
+  const id = String(req.params.id);
+  const hash = /^[0-9a-f]{16}$/.test(id) ? id : emailHash(id);
+  const r = await pool.query("delete from mail_suppressions where email_hash = $1", [hash]);
+  res.status(r.rowCount ? 200 : 404).json({ lifted: (r.rowCount ?? 0) > 0 });
+});
+
 admin.post("/mail/test", async (req, res) => {
   const to = String(req.body?.to ?? "").trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(to)) { res.status(400).json({ error: "to: a valid email address is required" }); return; }

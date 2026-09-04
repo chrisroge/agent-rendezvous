@@ -510,6 +510,9 @@ test("mail delivery webhook: rejects unauthenticated, records events, suppresses
   const view = await (await admin("/mail")).json();
   assert.ok((view.suppressed?.hard_bounce ?? 0) >= 1);
   assert.ok(view.recent.some((r: any) => r.status === "bounced"));
+  // This suite also runs against production: lift the suppression it just created.
+  assert.equal((await admin(`/mail/suppressions/${encodeURIComponent(addr)}`, { method: "DELETE" })).status, 200, "suppression lifted");
+  assert.equal((await admin(`/mail/suppressions/${encodeURIComponent(addr)}`, { method: "DELETE" })).status, 404, "already gone");
 });
 
 test("website, llms.txt, stats and operator API", async () => {
