@@ -68,6 +68,8 @@ export const config = {
     from: str("MAIL_FROM", ""),                       // e.g. "Rendezvous <matchmaker@agentrendezvous.app>"; empty = mail disabled
     replyTo: str("MAIL_REPLY_TO", "privacy@agentrendezvous.app"),
     region: str("MAIL_REGION", str("AWS_REGION", "us-east-2")),
+    transport: str("MAIL_TRANSPORT", "ses") as "ses" | "smtp", // smtp = any relay with reputation (Resend, Postmark, …); creds from the rendezvous/smtp secret
+    smtp: { host: str("MAIL_SMTP_HOST", ""), port: int("MAIL_SMTP_PORT", 587), user: str("MAIL_SMTP_USER", ""), pass: str("MAIL_SMTP_PASS", "") },
   },
   interview: {
     model: str("INTERVIEW_MODEL", "claude-sonnet-5"),

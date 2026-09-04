@@ -17,13 +17,15 @@
     "experiment": "tsx tests/agent-experiment.ts",
     "ambassador": "tsx tools/ambassador-cli.ts",
     "june": "tsx src/june/index.ts",
-    "june:cycle": "tsx -e \"import('./src/june/engine.js').then(m=>m.cycle()).then(r=>{console.log(JSON.stringify(r));process.exit(0)})\""
+    "june:cycle": "tsx -e \"import('./src/june/engine.js').then(m=>m.cycle()).then(r=>{console.log(JSON.stringify(r));process.exit(0)})\"",
+    "mail:smoke": "tsx tools/mail-smoke.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",
     "@aws-sdk/client-sesv2": "^3.1126.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "express": "^5.2.1",
+    "nodemailer": "^7.0.13",
     "pg": "^8.23.0",
     "stripe": "^22.6.0",
     "zod": "^4.5.1"
@@ -31,6 +33,7 @@
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^24.0.0",
+    "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.23.1",
     "tsx": "^4.23.12",
     "typescript": "^5.9.3"

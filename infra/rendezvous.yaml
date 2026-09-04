@@ -17,6 +17,7 @@ Parameters:
   DBAllocatedStorage: { Type: Number, Default: 20 }
   StripePortalConfigId: { Type: String, Default: "", Description: "Stripe customer-portal configuration to use (not secret); empty = account default" }
   PaymentLinkUrl: { Type: String, Default: "", Description: "Stripe Payment Link for the CURRENT seeker price, shown on /pricing (not secret); empty hides the button" }
+  MailTransport: { Type: String, Default: "ses", AllowedValues: ["ses", "smtp"], Description: "Outbound mail: SES, or an SMTP relay whose credentials live in the rendezvous/smtp secret" }
   MailFrom: { Type: String, Default: "", Description: "From address for transactional mail via SES, e.g. 'Rendezvous <matchmaker@agentrendezvous.app>'; empty disables mail" }
   InterviewModel: { Type: String, Default: "claude-sonnet-5", Description: "Model for the be-found interview" }
   RepresentativeEnabled: { Type: String, Default: "false", AllowedValues: ["true", "false"], Description: "Run the representative scheduler (answers seekers' agents for interviewed people)" }
@@ -102,6 +103,12 @@ Resources:
       Name: rendezvous/ambassador
       Description: Moltbook ambassador — key anthropic_api_key (the model that drafts its replies). Empty until enabled.
       SecretString: '{"anthropic_api_key":""}'
+  SmtpSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: rendezvous/smtp
+      Description: SMTP relay for transactional mail (used when MailTransport=smtp) — keys host, port, user, pass. Empty until a relay is chosen.
+      SecretString: '{"host":"","port":"587","user":"","pass":""}'
   StripeSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
@@ -157,6 +164,7 @@ Resources:
                   - !Ref OperatorTokenSecret
                   - !Ref StripeSecret
                   - !Ref AmbassadorSecret
+                  - !Ref SmtpSecret
   TaskRole:
     Type: AWS::IAM::Role
     Properties:
@@ -200,6 +208,7 @@ Resources:
             - { Name: PAYMENT_LINK_URL, Value: !Ref PaymentLinkUrl }
             - { Name: STRIPE_FOUNDER_PRICE_ID, Value: !Ref StripeFounderPriceId }
             - { Name: MAIL_FROM, Value: !Ref MailFrom }
+            - { Name: MAIL_TRANSPORT, Value: !Ref MailTransport }
             - { Name: INTERVIEW_MODEL, Value: !Ref InterviewModel }
             - { Name: MATCHMAKER_NAME, Value: !Ref MatchmakerName }
             - { Name: REPRESENTATIVE_ENABLED, Value: !Ref RepresentativeEnabled }
@@ -215,6 +224,10 @@ Resources:
             - { Name: STRIPE_PRICE_ID, ValueFrom: !Sub "${StripeSecret}:price_id::" }
             - { Name: STRIPE_REPRESENTED_PRICE_ID, ValueFrom: !Sub "${StripeSecret}:represented_price_id::" }
             - { Name: ANTHROPIC_API_KEY, ValueFrom: !Sub "${AmbassadorSecret}:anthropic_api_key::" }
+            - { Name: MAIL_SMTP_HOST, ValueFrom: !Sub "${SmtpSecret}:host::" }
+            - { Name: MAIL_SMTP_PORT, ValueFrom: !Sub "${SmtpSecret}:port::" }
+            - { Name: MAIL_SMTP_USER, ValueFrom: !Sub "${SmtpSecret}:user::" }
+            - { Name: MAIL_SMTP_PASS, ValueFrom: !Sub "${SmtpSecret}:pass::" }
           LogConfiguration:
             LogDriver: awslogs
             Options: { awslogs-group: !Ref LogGroup, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: app }
