@@ -493,6 +493,15 @@ test("operator mail view reports the configured transport; test send validates i
   assert.equal(bad.status, 400, "a malformed address is refused before any send");
 });
 
+test("reserved test domains never reach the mail relay", async () => {
+  // This suite runs against production. Handing example.invalid to the relay manufactures real bounces against us.
+  const r = await admin("/mail/test", { method: "POST", body: JSON.stringify({ to: "nobody@example.invalid" }) });
+  assert.equal(r.status, 503);
+  assert.match((await r.json()).error ?? "", /reserved test domain/);
+  const view = await (await admin("/mail")).json();
+  assert.ok(view.recent.some((x: any) => x.status === "blocked"), "the attempt is logged as blocked");
+});
+
 test("mail delivery webhook: rejects unauthenticated, records events, suppresses hard bounces", async () => {
   const addr = `bounce-${Date.now()}@example.invalid`;
   const post = (body: Record<string, unknown>, auth?: string) => fetch(BASE + "/webhooks/postmark", {

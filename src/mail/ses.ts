@@ -19,6 +19,17 @@ export const mailTransport = () => config.mail.transport;
 export const emailHash = (to: string) => createHash("sha256").update(to.trim().toLowerCase()).digest("hex").slice(0, 16);
 const toHash = emailHash;
 
+/**
+ * Domains reserved by RFC 2606 and RFC 6761 for documentation and testing. They can never receive mail, so handing one
+ * to the relay only manufactures a bounce against our own sending reputation. The end-to-end suite runs against
+ * production and uses such addresses, so this check is what keeps test runs off the relay entirely.
+ */
+const UNDELIVERABLE = /(?:\.(?:invalid|test|example|localhost)|(?:^|\.)example\.(?:com|net|org))$/i;
+export function undeliverableDomain(to: string): boolean {
+  const domain = to.trim().toLowerCase().split("@").pop() ?? "";
+  return UNDELIVERABLE.test(domain);
+}
+
 /** Addresses that hard-bounced or reported spam. Never mailed again; sending to them is what ruins a relay's reputation. */
 export async function isSuppressed(to: string): Promise<string | null> {
   const r = await pool.query("select reason from mail_suppressions where email_hash = $1", [toHash(to)]);
@@ -31,6 +42,7 @@ export async function sendMail(m: { to: string; subject: string; text: string; h
       [m.kind, toHash(m.to), m.subject, status, id ?? null, error ?? null, response?.slice(0, 500) ?? null]).catch(() => {});
   const suppressed = await isSuppressed(m.to);
   if (suppressed) { await log("suppressed", undefined, suppressed); return { sent: false, error: `address suppressed (${suppressed})` }; }
+  if (undeliverableDomain(m.to)) { await log("blocked"); return { sent: false, error: "reserved test domain; nothing was handed to the relay" }; }
   if (!mailEnabled()) { await log("disabled"); return { sent: false, error: config.mail.from ? "mail disabled (smtp credentials unset)" : "mail disabled (MAIL_FROM unset)" }; }
   try {
     if (config.mail.transport === "smtp") {
