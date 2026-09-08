@@ -40,9 +40,6 @@ function dbConfig() {
 /** Published prices. Numbers only; every sentence that quotes a price derives from here. */
 const pricing = {
   seekerMonthlyUsd: int("PRICE_SEEKER_MONTHLY_USD", 39),
-  includedOpensPerMonth: int("PRICE_INCLUDED_OPENS", 12),
-  packOpens: int("PRICE_PACK_OPENS", 5),
-  packUsd: int("PRICE_PACK_USD", 10),
   chosenOneTimeUsd: int("PRICE_CHOSEN_ONE_TIME_USD", 29),
   founderMonthlyUsd: 5, // the original founding price; existing founding members keep it
 };
@@ -56,7 +53,7 @@ export const config = {
   stripeSecretKey: str("STRIPE_SECRET_KEY", ""),
   stripeWebhookSecret: str("STRIPE_WEBHOOK_SECRET", ""),
   stripePriceId: str("STRIPE_PRICE_ID", ""),
-  stripeFounderPriceId: str("STRIPE_FOUNDER_PRICE_ID", "") || str("STRIPE_PRICE_ID", ""), // empty (CFN default) falls back to the current price
+  stripeFounderPriceId: str("STRIPE_FOUNDER_PRICE_ID", ""), // the original $5 price; empty means nobody is flagged as a founding member
   stripePortalConfigId: str("STRIPE_PORTAL_CONFIG_ID", ""),
   stripeRepresentedPriceId: str("STRIPE_REPRESENTED_PRICE_ID", ""), // one-time be-found price
   paymentLinkUrl: str("PAYMENT_LINK_URL", ""), // Stripe Payment Link for the current seeker price; must match pricing.seekerMonthlyUsd

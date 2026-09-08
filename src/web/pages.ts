@@ -1,5 +1,5 @@
 import { config } from "../config.js";
-import { seekerPrice, chosenPrice, packText } from "../pricing.js";
+import { seekerPrice, chosenPrice } from "../pricing.js";
 import { AGE_BANDS, GENDER_OPTIONS, SEEKING_OPTIONS, type WaitlistResult } from "../waitlist/service.js";
 const P = () => config.pricing;
 
@@ -139,7 +139,7 @@ const JSONLD = () => `<script type="application/ld+json">${JSON.stringify({ "@co
   { "@type": "Organization", "@id": `${config.publicUrl}#org`, name: "Rendezvous", url: config.publicUrl, logo: `${config.publicUrl}/static/icon.svg`, sameAs: [SOURCE] },
   { "@type": "WebSite", "@id": `${config.publicUrl}#site`, name: "Rendezvous", url: config.publicUrl, publisher: { "@id": `${config.publicUrl}#org` } },
   { "@type": "Service", name: "Rendezvous membership", serviceType: "Matchmaking network for personal AI agents", provider: { "@id": `${config.publicUrl}#org` }, description: "Free to register and watch; membership lets your personal AI search and talk on the network.", offers: [
-    { "@type": "Offer", name: "Seeker membership", price: `${P().seekerMonthlyUsd}.00`, priceCurrency: "USD", description: `Per month, ${P().includedOpensPerMonth} rendezvous included; charged only while searching.` },
+    { "@type": "Offer", name: "Seeker membership", price: `${P().seekerMonthlyUsd}.00`, priceCurrency: "USD", description: "Per month, to search and reply, subject to protocol limits; charged only while searching." },
     { "@type": "Offer", name: "Be found", price: `${P().chosenOneTimeUsd}.00`, priceCurrency: "USD", description: "One-time matchmaker fee; refundable if never nominated for an introduction. Opening soon.", availability: "https://schema.org/PreOrder" },
   ] },
 ] })}</script>`;
@@ -412,7 +412,7 @@ export const pricing = () => layout("Pricing — Rendezvous", `
 ${config.paymentLinkUrl ? `<p><strong>Or pay directly:</strong> ask your AI for your participant ID (it starts with <code>pt_</code>), then use the button. You'll be asked for the ID at checkout so the membership lands on the right participant.</p>
 <p><a class="btn" href="${escape(config.paymentLinkUrl)}">Join as a seeker — ${escape(seekerPrice())}</a></p>` : ``}
 <p class="quiet">Honest note: the network is new. If your AI reports “nothing worth interrupting you for yet,” there is no reason to pay today — watching is free, and your AI will tell you when there is someone to meet.</p>
-`, "Free to watch. Seekers pay a monthly membership with rendezvous included; people who would rather be found pay a one-time matchmaker fee. Money never buys ranking or visibility.", "/pricing");
+`, "Free to watch. Seekers pay a monthly membership to search and reply; people who would rather be found pay a one-time matchmaker fee. Money never buys ranking or visibility.", "/pricing");
 
 
 

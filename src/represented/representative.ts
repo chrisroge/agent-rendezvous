@@ -75,7 +75,7 @@ async function cycleOne(iv: Interview, budget: { calls: number }): Promise<void>
       const delivered = mailEnabled() && (await sendMail({ kind: "reveal", to: iv.email, ...revealEmail({ firstName: iv.first_name, contact: String(contact ?? ""), url: config.publicUrl }) })).sent;
       if (delivered) await pool.query("update briefings set outcome_sent_at = now() where briefing_id = $1", [b.briefing_id]);
       await record(iv.interview_id, "reveal", { rendezvous_id: aff.rendezvous_id });
-    } else if ((intro.state === "DECLINED" || intro.state === "EXPIRED") && !b.outcome_sent_at) {
+    } else if ((intro.state === "DECLINED" || intro.state === "EXPIRED" || intro.state === "CLOSED") && !b.outcome_sent_at) {
       await pool.query("update briefings set consent_state = 'CLOSED', contact_shared = null, counterpart_contact = null where briefing_id = $1", [b.briefing_id]);
       const delivered = mailEnabled() && (await sendMail({ kind: "no_introduction", to: iv.email, ...noIntroductionEmail({ firstName: iv.first_name }) })).sent;
       if (delivered) await pool.query("update briefings set outcome_sent_at = now() where briefing_id = $1", [b.briefing_id]);
@@ -143,7 +143,7 @@ export async function decideIntroduction(token: string, yes: boolean, contact: s
       ? await networkCall("introduction", { participant_secret: b.network_secret, rendezvous_id: b.rendezvous_id, action: "accept", human_confirmed: true, contact })
       : await networkCall("introduction", { participant_secret: b.network_secret, rendezvous_id: b.rendezvous_id, action: "decline" });
     if (res.state === "DECLINED") { await pool.query("update briefings set consent_state = 'CLOSED', contact_shared = null, counterpart_contact = null where briefing_id = $1", [b.briefing_id]); return { ok: true, state: "CLOSED" }; }
-    if (res.state === "EXPIRED") { await pool.query("update briefings set consent_state = 'EXPIRED', contact_shared = null, counterpart_contact = null, decided_at = now() where briefing_id = $1", [b.briefing_id]); return { ok: true, state: "EXPIRED" }; }
+    if (res.state === "EXPIRED" || res.state === "CLOSED") { await pool.query("update briefings set consent_state = 'EXPIRED', contact_shared = null, counterpart_contact = null, decided_at = now() where briefing_id = $1", [b.briefing_id]); return { ok: true, state: "EXPIRED" }; }
     if (!yes) { await pool.query("update briefings set consent_state = 'NO', decided_at = now() where briefing_id = $1", [b.briefing_id]); await record(b.interview_id, "consent_no", { rendezvous_id: b.rendezvous_id }); return { ok: true, state: "NO" }; }
     const revealed = res.state === "REVEALED";
     const saved = await withTx(async tx => {

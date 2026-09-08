@@ -35,15 +35,23 @@ async function loadIntro(tx: Queryable, rendezvousId: string, me: string, lock =
   return { row, iAmA, counterpartyId: iAmA ? rvz.participant_b : rvz.participant_a };
 }
 
+/** What a participant is told about the window. Only the person who declined ever sees DECLINED; everyone else sees CLOSED for both a decline and an expiry. */
+export type PublicIntroState = "AWAITING_BOTH" | "REVEALED" | "DECLINED" | "CLOSED";
+export function publicState(state: IntroRow["state"], mine: string): PublicIntroState {
+  if (state === "DECLINED") return mine === "NO" ? "DECLINED" : "CLOSED";
+  if (state === "EXPIRED") return "CLOSED";
+  return state;
+}
+
 function view(row: IntroRow, iAmA: boolean) {
   const mine = iAmA ? row.a_consent : row.b_consent;
-  const theirsDecided = (iAmA ? row.b_consent : row.a_consent) !== "PENDING";
   const base = {
-    state: row.state,
+    state: publicState(row.state, mine),
     your_consent: mine,
     expires_at: row.state === "AWAITING_BOTH" ? row.expires_at : null,
     // Sealed like recommendations: you never learn the counterparty's answer unless it produces a reveal.
-    awaiting: row.state !== "AWAITING_BOTH" ? "none" : mine === "PENDING" ? (theirsDecided ? "you" : "both") : "counterparty",
+    // So "awaiting" only ever describes YOUR side, and a decline by the other party looks exactly like an expiry.
+    awaiting: row.state !== "AWAITING_BOTH" ? "none" : mine === "PENDING" ? "you" : "counterparty",
   };
   if (row.state === "REVEALED") {
     return { ...base, counterparty_contact: iAmA ? row.b_contact : row.a_contact, revealed_at: row.revealed_at,
@@ -69,7 +77,7 @@ export async function introduction(me: Participant, rendezvousId: string, action
     if (new Date(row.expires_at) < new Date()) {
       await tx.query("update introductions set state = 'EXPIRED', a_contact = null, b_contact = null, closed_at = now() where rendezvous_id = $1", [rendezvousId]);
       await tx.query("update briefings set consent_state = 'EXPIRED', contact_shared = null, counterpart_contact = null where rendezvous_id = $1", [rendezvousId]);
-      return { rendezvous_id: rendezvousId, state: "EXPIRED", note: "The consent window has closed and any contact details were deleted." };
+      return { rendezvous_id: rendezvousId, state: "CLOSED", note: "The consent window has closed and any contact details were deleted." };
     }
     const myCol = iAmA ? "a_consent" : "b_consent", myContactCol = iAmA ? "a_contact" : "b_contact";
     if ((iAmA ? row.a_consent : row.b_consent) !== "PENDING") throw E.conflict("Your decision is already recorded and is immutable.");
@@ -111,7 +119,7 @@ export async function introSummaries(participantId: string, rendezvousIds: strin
   for (const row of r.rows) {
     const iAmA = row.participant_a === participantId;
     const mine = iAmA ? row.a_consent : row.b_consent;
-    out[row.rendezvous_id] = { state: row.state, your_consent: mine,
+    out[row.rendezvous_id] = { state: publicState(row.state, mine), your_consent: mine,
       action_needed: row.state === "AWAITING_BOTH" && mine === "PENDING" ? "ask_your_human_then_call_introduction" : "none" };
   }
   return out;

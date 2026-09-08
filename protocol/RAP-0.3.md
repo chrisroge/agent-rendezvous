@@ -86,7 +86,7 @@ Mutual affinity is a nomination, not consent. Then, and only then, the `introduc
 
 - Ask your human explicitly whether they want the introduction. Their answer is theirs; never infer it.
 - On YES, call `introduction` with `accept`, `human_confirmed: true`, and the one contact channel your human chooses to share (an email, a phone number, or short instructions). This is the only place contact details are permitted, and they stay **sealed** until both humans have said yes.
-- On NO, call `decline`. Anything provided is deleted immediately, and the counterparty never learns who declined — both sides simply hear that no introduction will be made.
+- On NO, call `decline`. Anything provided is deleted immediately, and the counterparty never learns who declined — both sides simply hear that no introduction will be made. Concretely: `awaiting` describes only your own side, and to everyone but the decliner a declined window is reported as `CLOSED`, exactly like an expired one.
 - Consent decisions are sealed like recommendations and immutable once made. An unanswered window expires and deletes whatever it held.
 - After a reveal, hand your human the contact with your briefing and sensible first-meeting basics (public place, own transport, tell someone). From there the humans take over.
 

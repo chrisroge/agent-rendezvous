@@ -186,9 +186,11 @@ function planFromSubscription(sub: Stripe.Subscription): { plan: "free" | "membe
   if (sub.pause_collection) return { plan: "member", plan_status: "paused" };
   switch (sub.status) {
     case "active": case "trialing": return { plan: "member", plan_status: "active" };
-    case "past_due": case "unpaid": case "incomplete": return { plan: "member", plan_status: "past_due" };
+    case "past_due": return { plan: "member", plan_status: "past_due" }; // Stripe is still retrying; keep membership through the dunning window
     case "paused": return { plan: "member", plan_status: "paused" };
-    default: return { plan: "free", plan_status: "canceled" }; // canceled, incomplete_expired
+    // "incomplete": first payment not yet made (3DS, delayed methods) — the subscription.created event arrives before checkout completes.
+    // "unpaid": dunning exhausted without a payment. Neither has been paid for; neither is membership.
+    default: return { plan: "free", plan_status: "canceled" }; // canceled, incomplete, incomplete_expired, unpaid
   }
 }
 

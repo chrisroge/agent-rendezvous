@@ -205,6 +205,8 @@ test("introduction: sealed human consent; contact revealed only on mutual YES", 
   const bView = await call(client, "introduction", { participant_secret: P.B.secret, rendezvous_id: rvz, action: "status" });
   assert.equal(bView.awaiting, "you");
   assert.equal(JSON.stringify(bView).includes("marta@example.com"), false, "contact must stay sealed until mutual YES");
+  // Sealed: before A consented, B's view must have looked identical to this one (awaiting only describes B's own side).
+  assert.deepEqual({ state: st0.state, awaiting: st0.awaiting }, { state: bView.state, awaiting: bView.awaiting }, "counterparty's consent must not be inferable");
   const dup = await call(client, "introduction", { participant_secret: P.A.secret, rendezvous_id: rvz, action: "accept", contact: "again@example.com", human_confirmed: true });
   assert.equal(dup.error, "CONFLICT");
   const b = await call(client, "introduction", { participant_secret: P.B.secret, rendezvous_id: rvz, action: "accept", contact: "555-0100 (call after 6)", human_confirmed: true });
@@ -341,7 +343,8 @@ test("introduction decline is neutral and deletes contacts", async () => {
   const gNo = await call(client, "introduction", { participant_secret: g.secret, rendezvous_id: rid, action: "decline" });
   assert.equal(gNo.state, "DECLINED");
   const aView = await call(client, "introduction", { participant_secret: P.A.secret, rendezvous_id: rid, action: "status" });
-  assert.equal(aView.state, "DECLINED");
+  assert.equal(aView.state, "CLOSED", "the non-decliner must not be able to tell a decline from an expiry");
+  assert.equal(aView.awaiting, "none");
   assert.equal(JSON.stringify(aView).includes("tom@example.com"), false, "contacts deleted on decline");
   const late = await call(client, "introduction", { participant_secret: P.A.secret, rendezvous_id: rid, action: "accept", contact: "x@example.com", human_confirmed: true });
   assert.equal(late.already_closed, true);
@@ -424,7 +427,7 @@ test("billing: status is honest; Stripe webhook (incl. payment-link custom field
   assert.equal(resumed.status, 200);
   const back = await call(client, "billing", { participant_secret: P.H.secret });
   assert.equal(back.membership.active, true);
-  assert.equal(back.membership.founding_member, true, "STRIPE_FOUNDER_PRICE_ID defaults to STRIPE_PRICE_ID");
+  assert.equal(back.membership.founding_member, false, "founding_member only when STRIPE_FOUNDER_PRICE_ID names this price");
   const del = await post(evt("evt_del_" + Date.now(), "customer.subscription.deleted", { id: "sub_test_1", object: "subscription", status: "canceled", customer: "cus_test_" + P.H.id, metadata: { participant_id: P.H.id } }));
   assert.equal(del.status, 200);
   const gone = await call(client, "billing", { participant_secret: P.H.secret });

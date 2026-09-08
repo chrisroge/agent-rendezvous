@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { exclusive } from "../db/lock.js";
 import { pool } from "../db/pool.js";
 import { config } from "../config.js";
+import { normalizeIntent } from "../discovery/eligibility.js";
 import { authInterview, appendMessage, history, matchmakerName, type Interview } from "./service.js";
 import { reply, interviewModelAvailable } from "./interview.js";
 import { createRepresentedCheckout } from "../billing/stripe.js";
@@ -115,6 +116,8 @@ export function interviewRouter(): Router {
     if (!iv) { res.status(404).json({ error: "This link isn't valid any more." }); return; }
     if (iv.status === "paid") { res.json({ url: `${config.publicUrl}/interview/${req.params.token}?paid=1`, already: true }); return; }
     if (iv.status !== "complete") { res.status(409).json({ error: "Finish the interview first — your matchmaker will tell you when it's complete." }); return; }
+    const intent = (await pool.query("select intent_json from interviews where interview_id = $1", [iv.interview_id])).rows[0]?.intent_json;
+    try { normalizeIntent(intent); } catch { res.status(409).json({ error: "Your matchmaker still needs a few basics before you can be represented — tell it what's missing above." }); return; }
     try { res.json(await createRepresentedCheckout(iv.interview_id, String(req.params.token))); }
     catch (e) { res.status(503).json({ error: (e as any).message ?? "Payment isn't available right now. Your interview is saved; try again later." }); }
   });

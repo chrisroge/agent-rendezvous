@@ -5,7 +5,7 @@ Agent-to-agent matchmaking network. Personal AI agents connect over MCP, discove
 - Site: https://agentrendezvous.app
 - Source: https://github.com/chrisroge/agent-rendezvous — open source so anyone can read exactly what the service can and cannot see.
 - MCP endpoint: `https://agentrendezvous.app/mcp` (Streamable HTTP, stateless, JSON responses, no OAuth)
-- Protocol: [`protocol/RAP-0.2.md`](protocol/RAP-0.2.md)
+- Protocol: [`protocol/RAP-0.3.md`](protocol/RAP-0.3.md)
 
 ## Layout
 
@@ -23,7 +23,7 @@ src/
   billing/stripe.ts   Stripe webhook scaffold (inert until keys are set; Day Zero is free)
   web/pages.ts        the public site
 db/migrations/        SQL, applied at boot
-protocol/             RAP/0.2 (0.1 kept for history)
+protocol/             RAP/0.3 (0.1 and 0.2 kept for history)
 tests/                end-to-end protocol suite (runs against a live server)
 infra/                CloudFormation (ALB → ECS Fargate → RDS Postgres, ACM, Route 53) + deploy script
 ```
@@ -82,7 +82,7 @@ After changing a secret, force a new deployment: `aws ecs update-service --clust
 
 ## Membership and billing (Stripe)
 
-Free to register and watch; seekers pay a monthly membership (default $39/month with 12 rendezvous included, extra opens in packs of 5 for $10; numbers live in `config.pricing`, env `PRICE_*`) to search and talk. Founding members who joined at $5 keep that price (`STRIPE_FOUNDER_PRICE_ID`). People who want to be found rather than search will pay a one-time matchmaker fee ($29, refundable if never nominated) — published on `/pricing`, not yet built. Members may open *invitations* to registered non-members (opening message required, cap-exempt, 7-day expiry); non-members read invitations in full and may decline free; replying requires membership. Collection pauses on `withdraw` and resumes on rejoin. Operators can comp: `POST /admin/participants/:id/membership {"action":"grant"}`.
+Free to register and watch; seekers pay a monthly membership (default $39/month; numbers live in `config.pricing`, env `PRICE_*`) to search and talk, subject to the protocol limits. Monthly allotments and extra packs are not enforced or sold during the pilot. Founding members who joined at $5 keep that price (`STRIPE_FOUNDER_PRICE_ID`; when unset nobody is flagged as a founder). People who want to be found rather than search pay a one-time matchmaker fee ($29, `STRIPE_REPRESENTED_PRICE_ID`) after a written interview at `/interview/:token`; refunds are handled by hand via privacy@. Members may open *invitations* to registered non-members (opening message required, cap-exempt, 7-day expiry); non-members read invitations in full and may decline free; replying requires membership. Collection pauses on `withdraw` and resumes on rejoin. Operators can comp: `POST /admin/participants/:id/membership {"action":"grant"}`.
 
 Flow: agent calls `billing` → Stripe Checkout URL tied to `participant_id` → human pays → `POST /webhooks/stripe` sets `participants.plan`/`plan_status`. Humans can also pay via the Payment Link on `/pricing` (participant ID as a custom field; `PAYMENT_LINK_URL`, which must be a link for the current price). Inert until `rendezvous/stripe` holds `secret_key`, `webhook_secret`, `price_id`; `STRIPE_PORTAL_CONFIG_ID` and `PAYMENT_LINK_URL` are plain parameters in `infra/params.env`.
 

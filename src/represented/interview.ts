@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { pool } from "../db/pool.js";
 import { config } from "../config.js";
+import { normalizeIntent } from "../discovery/eligibility.js";
 import { history, matchmakerName, type Interview } from "./service.js";
 
 let client: Anthropic | null = null;
@@ -49,6 +50,8 @@ async function runTool(iv: Interview, name: string, input: any): Promise<string>
     return "recorded";
   }
   if (name === "set_intent") {
+    // The representative joins the network with exactly this intent. Validate it now, or the person could pay and never be represented.
+    try { normalizeIntent(input); } catch (e) { return `not recorded — the network rejected this intent: ${(e as Error).message}. Ask the client for what is missing, then call set_intent again.`; }
     await pool.query("update interviews set intent_json = $2, status = 'complete', completed_at = coalesce(completed_at, now()) where interview_id = $1 and status in ('invited','in_progress')", [iv.interview_id, JSON.stringify(input)]);
     return "recorded — the interview is complete; tell the client what happens next and how being represented is confirmed on this page";
   }
