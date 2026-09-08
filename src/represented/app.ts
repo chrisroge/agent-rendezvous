@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { exclusive } from "../db/lock.js";
 import { pool } from "../db/pool.js";
 import { config } from "../config.js";
 import { authInterview, appendMessage, history, matchmakerName, type Interview } from "./service.js";
@@ -45,6 +46,7 @@ function done(status){const old=document.getElementById('done');if(old)old.remov
  if(status==='paid'){d.innerHTML='<b>You\\'re represented.</b>Nothing more to do. You\\'ll hear from us only when two independent sides agree someone is worth an hour of your time — and then you decide.';}
  else{d.innerHTML='<b>The interview is complete.</b>To be represented on the network: <span id="price"></span>, once — never again, refundable if we never bring you anyone.<br><br><button id="pay" type="button">Represent me</button><br><small>Or keep talking — updates are welcome any time.</small>';}
  chat.appendChild(d);chat.scrollTop=chat.scrollHeight;
+ const review=document.createElement('div');d.appendChild(review);api('/session').then(s=>{const title=document.createElement('p');title.textContent='Choose the facts your matchmaker may share. Unchecked facts stay private. You can change this later.';review.appendChild(title);s.facts.forEach((fact,i)=>{const label=document.createElement('label'),cb=document.createElement('input');cb.type='checkbox';cb.value=i;cb.checked=fact.share===true;label.append(cb,document.createTextNode(' '+fact.fact+' ('+fact.provenance+')'));label.style.display='block';review.appendChild(label);});const save=document.createElement('button');save.type='button';save.textContent='Save sharing choices';save.onclick=async()=>{try{await api('/sharing',{facts:[...review.querySelectorAll('input:checked')].map(x=>Number(x.value))});add('sys','Sharing choices saved.');}catch(e){add('sys',e.message);}};review.appendChild(save);});
  const pay=document.getElementById('pay');if(pay)pay.onclick=async()=>{pay.disabled=true;try{const r=await api('/checkout',{});location.href=r.url;}catch(e){add('sys',e.message);pay.disabled=false;}};
 }
 async function api(p,body){const r=await fetch(BASE+p,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body||{})});if(!r.ok){const e=await r.json().catch(()=>({error:'Something went sideways.'}));throw new Error(e.error||('HTTP '+r.status));}return r.json();}
@@ -68,9 +70,21 @@ export function interviewRouter(): Router {
   r.post("/:token/session", async (req, res) => {
     const iv = await authInterview(String(req.params.token));
     if (!iv || iv.status === "expired" || iv.status === "closed") { res.status(404).json({ error: "This link isn't valid any more." }); return; }
-    res.json({ status: iv.status, first_name: iv.first_name, matchmaker: matchmakerName(), price: price(), history: await history(iv.interview_id) });
+    res.json({ status: iv.status, first_name: iv.first_name, matchmaker: matchmakerName(), price: price(), facts: iv.dossier_json.facts, history: await history(iv.interview_id) });
+  });
+  r.post("/:token/sharing", async (req, res) => {
+    const iv = await authInterview(String(req.params.token));
+    if (!iv || !["complete", "paid"].includes(iv.status)) { res.status(409).json({ error: "Complete the interview before reviewing shared facts." }); return; }
+    const selected = req.body?.facts;
+    const facts = iv.dossier_json.facts;
+    if (!Array.isArray(selected) || selected.some((x: unknown) => !Number.isInteger(x) || Number(x) < 0 || Number(x) >= facts.length)) { res.status(400).json({ error: "Select valid facts to share." }); return; }
+    // Compare the dossier so a concurrent interview cannot silently lose facts.
+    const result = await pool.query("update interviews set dossier_json = $2 where interview_id = $1 and dossier_json = $3::jsonb", [iv.interview_id, JSON.stringify({ facts: facts.map((f, i) => ({ ...f, share: selected.includes(i) })) }), JSON.stringify(iv.dossier_json)]);
+    if (!result.rowCount) { res.status(409).json({ error: "Your notes changed. Refresh and review them again." }); return; }
+    res.json({ saved: true });
   });
   r.post("/:token/message", async (req, res) => {
+    const ran = await exclusive("interview:" + String(req.params.token), async () => {
     const iv = await authInterview(String(req.params.token));
     if (!iv || iv.status === "expired" || iv.status === "closed") { res.status(404).json({ error: "This link isn't valid any more." }); return; }
     const msg = String(req.body?.message ?? "").trim();
@@ -92,6 +106,9 @@ export function interviewRouter(): Router {
       log({ level: "error", msg: "interview reply failed", error: (e as Error).message });
       res.status(502).json({ error: "Your matchmaker lost the thread for a moment — say that again?" });
     }
+    return true;
+    });
+    if (ran === null) res.status(409).json({ error: "Your matchmaker is answering the previous message. Please wait." });
   });
   r.post("/:token/checkout", async (req, res) => {
     const iv = await authInterview(String(req.params.token));

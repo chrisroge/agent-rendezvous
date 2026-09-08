@@ -68,12 +68,14 @@ export async function introduction(me: Participant, rendezvousId: string, action
     if (row.state !== "AWAITING_BOTH") return { rendezvous_id: rendezvousId, ...view(row, iAmA), already_closed: true };
     if (new Date(row.expires_at) < new Date()) {
       await tx.query("update introductions set state = 'EXPIRED', a_contact = null, b_contact = null, closed_at = now() where rendezvous_id = $1", [rendezvousId]);
+      await tx.query("update briefings set consent_state = 'EXPIRED', contact_shared = null, counterpart_contact = null where rendezvous_id = $1", [rendezvousId]);
       return { rendezvous_id: rendezvousId, state: "EXPIRED", note: "The consent window has closed and any contact details were deleted." };
     }
     const myCol = iAmA ? "a_consent" : "b_consent", myContactCol = iAmA ? "a_contact" : "b_contact";
     if ((iAmA ? row.a_consent : row.b_consent) !== "PENDING") throw E.conflict("Your decision is already recorded and is immutable.");
     if (action === "decline") {
       await tx.query(`update introductions set ${myCol} = 'NO', state = 'DECLINED', a_contact = null, b_contact = null, closed_at = now() where rendezvous_id = $1`, [rendezvousId]);
+      await tx.query("update briefings set consent_state = 'CLOSED', contact_shared = null, counterpart_contact = null where rendezvous_id = $1", [rendezvousId]);
       return { rendezvous_id: rendezvousId, state: "DECLINED", note: "Recorded. No introduction will be made and nothing was revealed. The counterparty is never told who declined." };
     }
     // accept
@@ -97,6 +99,7 @@ export async function introduction(me: Participant, rendezvousId: string, action
 export async function sweepIntroductions(): Promise<number> {
   const r = await pool.query(
     "update introductions set state = 'EXPIRED', a_contact = null, b_contact = null, closed_at = now() where state = 'AWAITING_BOTH' and expires_at < now() returning rendezvous_id");
+  await pool.query("update briefings b set consent_state = case when i.state = 'EXPIRED' then 'EXPIRED' else 'CLOSED' end, contact_shared = null, counterpart_contact = null from introductions i where b.rendezvous_id = i.rendezvous_id and i.state in ('EXPIRED','DECLINED')");
   return r.rowCount ?? 0;
 }
 

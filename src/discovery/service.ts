@@ -21,7 +21,7 @@ export interface Candidate {
  */
 export async function eligibleCandidates(me: Participant, myIntent: Intent): Promise<Candidate[]> {
   const r = await pool.query(
-    `select i.*, p.plan as p_plan, p.plan_status as p_plan_status, (p.client_info->>'name') = 'rendezvous-representative' as p_represented,
+    `select i.*, p.plan as p_plan, p.plan_status as p_plan_status, exists (select 1 from interviews iv where iv.network_participant_id = p.participant_id and iv.status = 'paid') as p_represented,
             (select count(*)::int from rendezvous v where v.participant_b = i.participant_id and v.state = 'OPEN' and v.kind = 'invitation') as pending_invitations
        from match_intents i
        join participants p on p.participant_id = i.participant_id

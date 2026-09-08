@@ -18,7 +18,15 @@
     "ambassador": "tsx tools/ambassador-cli.ts",
     "june": "tsx src/june/index.ts",
     "june:cycle": "tsx -e \"import('./src/june/engine.js').then(m=>m.cycle()).then(r=>{console.log(JSON.stringify(r));process.exit(0)})\"",
-    "mail:smoke": "tsx tools/mail-smoke.ts"
+    "mail:smoke": "tsx tools/mail-smoke.ts",
+    "stage": "python3 tools/stage.py",
+    "test:readiness": "python3 tools/stage.py run npx tsx tests/campaign/readiness.ts",
+    "test:community": "python3 tools/stage.py run npx tsx tests/campaign/community.ts",
+    "test:judgment": "python3 tools/stage.py run npx tsx tests/campaign/judgment.ts",
+    "test:interview": "python3 tools/stage.py run npx tsx tests/campaign/interview.ts",
+    "test:stripe-sandbox": "python3 tools/stage.py run npx tsx tests/campaign/stripe-sandbox.ts",
+    "campaign:report": "tsx tests/campaign/report.ts",
+    "typecheck:campaign": "tsc -p tsconfig.campaign.json"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",
@@ -31,6 +39,7 @@
     "zod": "^4.5.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.58.2",
     "@types/express": "^5.0.6",
     "@types/node": "^24.0.0",
     "@types/nodemailer": "^8.0.1",

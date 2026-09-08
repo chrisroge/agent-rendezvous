@@ -14,7 +14,7 @@ const ses = () => (client ??= new SESv2Client({ region: config.mail.region }));
 let smtp: nodemailer.Transporter | null = null;
 const smtpTransport = () => (smtp ??= nodemailer.createTransport({ host: config.mail.smtp.host, port: config.mail.smtp.port, secure: config.mail.smtp.port === 465, auth: { user: config.mail.smtp.user, pass: config.mail.smtp.pass }, connectionTimeout: 15_000, socketTimeout: 30_000 }));
 const smtpConfigured = () => Boolean(config.mail.smtp.host && config.mail.smtp.user && config.mail.smtp.pass);
-export const mailEnabled = () => Boolean(config.mail.from) && (config.mail.transport === "ses" || smtpConfigured());
+export const mailEnabled = () => Boolean(config.mail.from) && (config.mail.transport === "capture" || config.mail.transport === "ses" || smtpConfigured());
 export const mailTransport = () => config.mail.transport;
 export const emailHash = (to: string) => createHash("sha256").update(to.trim().toLowerCase()).digest("hex").slice(0, 16);
 const toHash = emailHash;
@@ -42,6 +42,13 @@ export async function sendMail(m: { to: string; subject: string; text: string; h
       [m.kind, toHash(m.to), m.subject, status, id ?? null, error ?? null, response?.slice(0, 500) ?? null]).catch(() => {});
   const suppressed = await isSuppressed(m.to);
   if (suppressed) { await log("suppressed", undefined, suppressed); return { sent: false, error: `address suppressed (${suppressed})` }; }
+  if (config.stage && config.mail.transport === "capture") {
+    const failure = await pool.query("select value from settings where key = 'stage_mail_failure'");
+    if (failure.rows[0]?.value === true) { await log("failed", undefined, "injected staging failure"); return { sent: false, error: "injected staging failure" }; }
+    const r = await pool.query("insert into captured_mail(kind, recipient, subject, body) values ($1,$2,$3,$4) returning mail_id", [m.kind, m.to, m.subject, m.text]);
+    await log("captured", String(r.rows[0].mail_id));
+    return { sent: true, id: String(r.rows[0].mail_id) };
+  }
   if (undeliverableDomain(m.to)) { await log("blocked"); return { sent: false, error: "reserved test domain; nothing was handed to the relay" }; }
   if (!mailEnabled()) { await log("disabled"); return { sent: false, error: config.mail.from ? "mail disabled (smtp credentials unset)" : "mail disabled (MAIL_FROM unset)" }; }
   try {

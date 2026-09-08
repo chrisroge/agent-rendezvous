@@ -1,0 +1,60 @@
+name: Protocol and readiness
+on: [push, pull_request]
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: rvz
+          POSTGRES_PASSWORD: rvz
+          POSTGRES_DB: rendezvous_stage_ci
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      APP_ENV: staging
+      HOST: 127.0.0.1
+      PORT: 18080
+      PUBLIC_URL: http://127.0.0.1:18080
+      BASE_URL: http://127.0.0.1:18080
+      REPRESENTATIVE_NETWORK_URL: http://127.0.0.1:18080/mcp
+      DATABASE_URL: postgres://rvz:rvz@localhost:5433/rendezvous_stage_ci
+      DB_SSL: disable
+      OPERATOR_TOKEN: isolated-ci-only
+      MAIL_TRANSPORT: capture
+      MAIL_FROM: Stage <stage@example.invalid>
+      JUNE_ENABLED: 'false'
+      AMBASSADOR_ENABLED: 'false'
+      REPRESENTATIVE_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck:campaign
+      - name: Start isolated service
+        run: |
+          mkdir -p .stage
+          npx tsx src/index.ts > .stage/server.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl --fail --silent "$BASE_URL/healthz"; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - run: npm test
+      - run: npx tsx tests/campaign/readiness.ts
+      - run: npx tsx tests/campaign/community.ts
+        env:
+          CAMPAIGN_PEOPLE: 20
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: synthetic-readiness
+          path: |
+            .stage/readiness.json
+            .stage/community-*/results.json
+            .stage/server.log

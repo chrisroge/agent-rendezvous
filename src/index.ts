@@ -29,6 +29,7 @@ const log = (o: Record<string, unknown>) => console.log(JSON.stringify({ ts: new
 const app = express();
 app.set("trust proxy", true);
 app.disable("x-powered-by");
+if (config.stage) app.use((_req, res, next) => { res.setHeader("X-Robots-Tag", "noindex, nofollow"); next(); });
 
 app.use((req, res, next) => {
   res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
@@ -91,6 +92,9 @@ if (config.june.enabled) app.use(config.june.path, express.json({ limit: "32kb" 
 // ---- represented side: the written interview behind a single-use emailed link ----
 app.use("/interview", express.json({ limit: "32kb" }), interviewRouter());
 app.use("/introduction", consentRouter());
+
+// Only the report file is exposed, never the staging directory or its credentials.
+if (config.stage) app.get("/campaign", (_req, res) => res.sendFile(pathJoin(process.cwd(), ".stage", "report.html"), { dotfiles: "allow" }));
 
 // ---- website ----
 const TRACKED = new Set(["/", "/how-it-works", "/for-agents", "/trust", "/pricing", "/be-found", "/no-apps", "/matchmaker", "/built-for-agents", "/privacy", "/terms", "/protocol", "/protocol.md", "/stats", "/stats.json", "/llms.txt", "/.well-known/agent-card.json", "/.well-known/mcp/server-card.json", "/billing/success", "/billing/cancel"]);
@@ -165,7 +169,7 @@ async function main() {
   const applied = await migrate();
   log({ msg: "migrations", applied });
   if (config.june.enabled) { const j = await juneMigrate(); log({ msg: "june migrations", applied: j, path: config.june.path }); }
-  const server = app.listen(config.port, () => log({ msg: "listening", port: config.port, publicUrl: config.publicUrl }));
+  const server = app.listen(config.port, config.host, () => log({ msg: "listening", port: config.port, publicUrl: config.publicUrl }));
   const sweeper = setInterval(() => { sweepIntroductions().then((n) => { if (n) log({ msg: "expired introductions", n }); }).catch((e) => log({ level: "error", msg: "intro sweep failed", error: e.message })); sweepExpired().then((n) => { if (n) log({ msg: "expired rendezvous", n }); }).catch((e) => log({ level: "error", msg: "sweep failed", error: e.message })); }, 10 * 60 * 1000);
   // Moltbook ambassador: in-process scheduler, only when explicitly enabled; every cycle only drafts, publishing only what the founder approved.
   const ambassadorTimer = config.ambassador.enabled

@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
-import { pool } from "../db/pool.js";
+import { exclusive } from "../db/lock.js";
+import { pool, withTx } from "../db/pool.js";
 import { config } from "../config.js";
 import { newId } from "../participants/ids.js";
 import { trustEvent } from "../participants/service.js";
@@ -46,7 +47,7 @@ async function cycleOne(iv: Interview, budget: { calls: number }): Promise<void>
 
   // 1. Mutual affinities → one briefing each, emailed with a consent link.
   for (const aff of status.mutual_affinities ?? []) {
-    const have = await pool.query("select briefing_id, consent_state, token_hash, contact_shared, outcome_sent_at from briefings where interview_id = $1 and rendezvous_id = $2", [iv.interview_id, aff.rendezvous_id]);
+    const have = await pool.query("select briefing_id, consent_state, token_hash, contact_shared, outcome_sent_at, mail_sent_at from briefings where interview_id = $1 and rendezvous_id = $2", [iv.interview_id, aff.rendezvous_id]);
     const intro = aff.introduction ?? {};
     if (!have.rowCount) {
       if (intro.state && intro.state !== "AWAITING_BOTH") continue; // window already closed before we ever briefed
@@ -64,17 +65,20 @@ async function cycleOne(iv: Interview, budget: { calls: number }): Promise<void>
       continue;
     }
     const b = have.rows[0];
+    if (intro.state === "AWAITING_BOTH" && b.consent_state === "PENDING" && !b.mail_sent_at) await reissueConsentLink(b.briefing_id, true);
     // 2. Outcomes after the person answered: reveal (both yes) or a quiet close.
-    if (intro.state === "REVEALED" && b.consent_state !== "REVEALED") {
+    if (intro.state === "REVEALED" && !b.outcome_sent_at) {
       // The status feed only carries the state; the contact channel comes from the introduction tool itself.
       const full = await networkCall("introduction", { participant_secret: secret, rendezvous_id: aff.rendezvous_id, action: "status" });
       const contact = full.counterparty_contact ?? intro.counterparty_contact ?? null;
-      await pool.query("update briefings set consent_state = 'REVEALED', counterpart_contact = $2, outcome_sent_at = now() where briefing_id = $1", [b.briefing_id, contact]);
-      if (mailEnabled()) await sendMail({ kind: "reveal", to: iv.email, ...revealEmail({ firstName: iv.first_name, contact: String(contact ?? ""), url: consentUrl("") }) });
+      await pool.query("update briefings set consent_state = 'REVEALED', counterpart_contact = $2 where briefing_id = $1", [b.briefing_id, contact]);
+      const delivered = mailEnabled() && (await sendMail({ kind: "reveal", to: iv.email, ...revealEmail({ firstName: iv.first_name, contact: String(contact ?? ""), url: config.publicUrl }) })).sent;
+      if (delivered) await pool.query("update briefings set outcome_sent_at = now() where briefing_id = $1", [b.briefing_id]);
       await record(iv.interview_id, "reveal", { rendezvous_id: aff.rendezvous_id });
     } else if ((intro.state === "DECLINED" || intro.state === "EXPIRED") && !b.outcome_sent_at) {
-      await pool.query("update briefings set consent_state = case when consent_state = 'PENDING' then 'CLOSED' else consent_state end, outcome_sent_at = now() where briefing_id = $1", [b.briefing_id]);
-      if (mailEnabled()) await sendMail({ kind: "no_introduction", to: iv.email, ...noIntroductionEmail({ firstName: iv.first_name }) });
+      await pool.query("update briefings set consent_state = 'CLOSED', contact_shared = null, counterpart_contact = null where briefing_id = $1", [b.briefing_id]);
+      const delivered = mailEnabled() && (await sendMail({ kind: "no_introduction", to: iv.email, ...noIntroductionEmail({ firstName: iv.first_name }) })).sent;
+      if (delivered) await pool.query("update briefings set outcome_sent_at = now() where briefing_id = $1", [b.briefing_id]);
       await record(iv.interview_id, "no_introduction", { rendezvous_id: aff.rendezvous_id });
     }
   }
@@ -92,20 +96,25 @@ async function cycleOne(iv: Interview, budget: { calls: number }): Promise<void>
   }
 }
 
-export async function cycle(): Promise<{ people: number; model_calls: number; errors: number }> {
-  if (!config.ambassador.anthropicApiKey) { log({ level: "warn", msg: "representative: no model key; skipping" }); return { people: 0, model_calls: 0, errors: 0 }; }
+async function runCycle(): Promise<{ people: number; model_calls: number; errors: number }> {
+  // Transport, consent and delivery recovery must keep working even when model access is unavailable.
   const used = await modelCallsToday();
-  const budget = { calls: Math.max(0, Math.min(config.representative.maxModelCallsPerCycle, config.representative.dailyModelCallCap - used)) };
+  const budget = { calls: config.ambassador.anthropicApiKey ? Math.max(0, Math.min(config.representative.maxModelCallsPerCycle, config.representative.dailyModelCallCap - used)) : 0 };
   const start = budget.calls;
-  const people = await pool.query("select * from interviews where status = 'paid' and intent_json is not null order by coalesce(network_joined_at, paid_at) asc limit 25");
+  const people = await pool.query("select * from interviews where status = 'paid' and intent_json is not null order by last_cycle_at asc nulls first, paid_at asc limit 25");
   let errors = 0;
   for (const iv of people.rows as Interview[]) {
     try { await cycleOne(iv, budget); }
     catch (e) { errors++; log({ level: "error", msg: "representative cycle failed", interview: iv.interview_id, error: (e as Error).message }); await record(iv.interview_id, "error", { error: (e as Error).message.slice(0, 300) }); }
+    finally { await pool.query("update interviews set last_cycle_at = now() where interview_id = $1", [iv.interview_id]); }
   }
   const out = { people: people.rowCount ?? 0, model_calls: start - budget.calls, errors };
   log({ msg: "representative cycle", ...out });
   return out;
+}
+
+export async function cycle() {
+  return await exclusive("representative-cycle", runCycle) ?? { people: 0, model_calls: 0, errors: 0, busy: true };
 }
 
 export async function representativeView() {
@@ -133,17 +142,28 @@ export async function decideIntroduction(token: string, yes: boolean, contact: s
     const res = yes
       ? await networkCall("introduction", { participant_secret: b.network_secret, rendezvous_id: b.rendezvous_id, action: "accept", human_confirmed: true, contact })
       : await networkCall("introduction", { participant_secret: b.network_secret, rendezvous_id: b.rendezvous_id, action: "decline" });
-    if (res.state === "EXPIRED") { await pool.query("update briefings set consent_state = 'EXPIRED', decided_at = now() where briefing_id = $1", [b.briefing_id]); return { ok: true, state: "EXPIRED" }; }
+    if (res.state === "DECLINED") { await pool.query("update briefings set consent_state = 'CLOSED', contact_shared = null, counterpart_contact = null where briefing_id = $1", [b.briefing_id]); return { ok: true, state: "CLOSED" }; }
+    if (res.state === "EXPIRED") { await pool.query("update briefings set consent_state = 'EXPIRED', contact_shared = null, counterpart_contact = null, decided_at = now() where briefing_id = $1", [b.briefing_id]); return { ok: true, state: "EXPIRED" }; }
     if (!yes) { await pool.query("update briefings set consent_state = 'NO', decided_at = now() where briefing_id = $1", [b.briefing_id]); await record(b.interview_id, "consent_no", { rendezvous_id: b.rendezvous_id }); return { ok: true, state: "NO" }; }
     const revealed = res.state === "REVEALED";
-    await pool.query("update briefings set consent_state = $2, contact_shared = $3, counterpart_contact = $4, decided_at = now(), outcome_sent_at = case when $2 = 'REVEALED' then now() else outcome_sent_at end where briefing_id = $1",
-      [b.briefing_id, revealed ? "REVEALED" : "YES", contact, revealed ? res.counterparty_contact ?? null : null]);
+    const saved = await withTx(async tx => {
+      // Lock the authoritative consent row so a concurrent decline cannot be followed by a stale local contact write.
+      const current = (await tx.query("select state from introductions where rendezvous_id = $1 for update", [b.rendezvous_id])).rows[0];
+      if (current && ["DECLINED", "EXPIRED"].includes(current.state)) {
+        const state = current.state === "EXPIRED" ? "EXPIRED" : "CLOSED";
+        await tx.query("update briefings set consent_state=$2, contact_shared=null, counterpart_contact=null where briefing_id=$1", [b.briefing_id,state]);
+        return state;
+      }
+      await tx.query("update briefings set consent_state=$2, contact_shared=$3, counterpart_contact=$4, decided_at=now() where briefing_id=$1", [b.briefing_id, revealed ? "REVEALED" : "YES",contact,revealed ? res.counterparty_contact ?? null : null]);
+      return null;
+    });
+    if (saved) return { ok: true, state: saved };
     await record(b.interview_id, "consent_yes", { rendezvous_id: b.rendezvous_id, revealed });
-    if (revealed && mailEnabled()) { const iv = await pool.query("select email, first_name from interviews where interview_id = $1", [b.interview_id]); await sendMail({ kind: "reveal", to: iv.rows[0].email, ...revealEmail({ firstName: iv.rows[0].first_name, contact: String(res.counterparty_contact ?? ""), url: consentUrl(token) }) }); }
+
     return { ok: true, state: revealed ? "REVEALED" : "YES", counterpart_contact: revealed ? res.counterparty_contact ?? null : null };
   } catch (e) {
     log({ level: "error", msg: "consent relay failed", error: (e as Error).message });
-    return { ok: false, error: "We couldn't record that just now. Nothing was shared. Please try again in a moment." };
+    return { ok: false, error: "We could not confirm the result. Your choice may already be recorded; please try again to check." };
   }
 }
 

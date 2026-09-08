@@ -48,6 +48,8 @@ const pricing = {
 };
 
 export const config = {
+  stage: str("APP_ENV", "production") === "staging",
+  host: str("HOST", "0.0.0.0"),
   port: int("PORT", 8080),
   publicUrl: str("PUBLIC_URL", "https://agentrendezvous.app"),
   operatorToken: str("OPERATOR_TOKEN", ""),
@@ -68,7 +70,7 @@ export const config = {
     from: str("MAIL_FROM", ""),                       // e.g. "Rendezvous <matchmaker@agentrendezvous.app>"; empty = mail disabled
     replyTo: str("MAIL_REPLY_TO", "privacy@agentrendezvous.app"),
     region: str("MAIL_REGION", str("AWS_REGION", "us-east-2")),
-    transport: str("MAIL_TRANSPORT", "ses") as "ses" | "smtp", // smtp = any relay with reputation (Resend, Postmark, …); creds from the rendezvous/smtp secret
+    transport: str("MAIL_TRANSPORT", "ses") as "ses" | "smtp" | "capture", // smtp = any relay with reputation (Resend, Postmark, …); creds from the rendezvous/smtp secret
     smtp: { host: str("MAIL_SMTP_HOST", ""), port: int("MAIL_SMTP_PORT", 587), user: str("MAIL_SMTP_USER", ""), pass: str("MAIL_SMTP_PASS", "") },
   },
   interview: {
@@ -125,3 +127,14 @@ export type Config = typeof config;
 
 /** Helper used by the HTTP layer. */
 export function requestBodyLimit(): string { return config.limits.requestBodyLimit; }
+
+// Fail closed before any database connection, payment, mail or background action.
+if (config.stage) {
+  const local = (url: string) => ["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname);
+  if (!local(config.publicUrl) || !local(config.representative.networkUrl)) throw new Error("Staging requires loopback public/network URLs");
+  if (!process.env.DATABASE_URL || !local(process.env.DATABASE_URL) || !new URL(process.env.DATABASE_URL).pathname.startsWith("/rendezvous_stage")) throw new Error("Staging requires a dedicated local rendezvous_stage database");
+  if (config.stripeSecretKey && !/^(sk|rk)_test_/.test(config.stripeSecretKey)) throw new Error("Staging refuses live Stripe keys");
+  if (config.mail.transport !== "capture" || config.ambassador.enabled || config.june.enabled) throw new Error("Staging requires captured mail and disabled ambassador/June");
+  if (!config.operatorToken || !["127.0.0.1", "::1"].includes(config.host)) throw new Error("Staging requires operator authentication and loopback bind");
+}
+if (config.mail.transport === "capture" && !config.stage) throw new Error("Mail capture is staging-only");

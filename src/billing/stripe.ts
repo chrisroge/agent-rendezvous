@@ -42,8 +42,8 @@ export function membershipView(p: Participant) {
     status: p.plan_status,
     founding_member: isMember(p) && !!p.stripe_price_id && p.stripe_price_id === config.stripeFounderPriceId,
     price: price(),
-    included_rendezvous_per_month: config.pricing.includedOpensPerMonth,
-    extra_rendezvous: `packs of ${config.pricing.packOpens} for ${config.pricing.packUsd}`,
+    included_rendezvous_per_month: null,
+    extra_rendezvous: "Not available during the pilot",
     founding_members_keep_original_price: true,
     pay_only_while_searching: true,
   };
@@ -228,6 +228,7 @@ export async function applyEvent(event: Stripe.Event): Promise<{ duplicate: bool
         const viaField = customFieldParticipant(s);
         participantId = (s.metadata?.participant_id ?? s.client_reference_id ?? null) || viaField || (await participantForCustomer(tx, customerId));
         if (s.mode === "payment" && s.metadata?.interview_id) {
+          if (s.payment_status !== "paid" && s.payment_status !== "no_payment_required") break;
           const pi = typeof s.payment_intent === "string" ? s.payment_intent : s.payment_intent?.id ?? null;
           const r = await tx.query("update interviews set status = 'paid', paid_at = coalesce(paid_at, now()), stripe_payment_intent_id = coalesce($2, stripe_payment_intent_id) where interview_id = $1 and status in ('complete','paid') returning waitlist_id", [s.metadata.interview_id, pi]);
           if (r.rowCount && r.rows[0].waitlist_id) await tx.query("update waitlist set status = 'joined' where waitlist_id = $1", [r.rows[0].waitlist_id]);
@@ -236,6 +237,7 @@ export async function applyEvent(event: Stripe.Event): Promise<{ duplicate: bool
           break;
         }
         if (participantId && s.mode === "subscription") {
+          if (s.payment_status !== "paid" && s.payment_status !== "no_payment_required") break;
           const subId = typeof s.subscription === "string" ? s.subscription : s.subscription?.id ?? null;
           if (customerId) await tx.query("update participants set stripe_customer_id = coalesce(stripe_customer_id, $2) where participant_id = $1", [participantId, customerId]);
           applied = await setPlan(tx, participantId, "member", "active", subId, null);
@@ -247,11 +249,17 @@ export async function applyEvent(event: Stripe.Event): Promise<{ duplicate: bool
       case "customer.subscription.created":
       case "customer.subscription.updated":
       case "customer.subscription.deleted": {
-        const sub = event.data.object as Stripe.Subscription;
+        let sub = event.data.object as Stripe.Subscription;
+        // Reconcile the current provider object rather than replaying an obsolete snapshot.
+        // Synthetic in-process campaign fixtures omit livemode and have no provider object.
+        if (stripe && typeof event.livemode === "boolean") {
+          await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", ["stripe:" + sub.id]);
+          sub = await stripe.subscriptions.retrieve(sub.id);
+        }
         participantId = sub.metadata?.participant_id || (await participantForCustomer(tx, typeof sub.customer === "string" ? sub.customer : sub.customer?.id));
         if (participantId) {
           const priceId = sub.items?.data?.[0]?.price?.id ?? null;
-          const { plan, plan_status } = event.type === "customer.subscription.deleted" ? { plan: "free" as const, plan_status: "canceled" as const } : planFromSubscription(sub);
+          const { plan, plan_status } = planFromSubscription(sub);
           applied = await setPlan(tx, participantId, plan, plan_status, sub.id, priceId);
         }
         break;

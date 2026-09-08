@@ -8,3 +8,6 @@ infra/params.env
 
 # experiment transcripts stay out of git
 tests/agent-ecology/out/
+
+# Isolated staging credentials and synthetic campaign artifacts
+.stage/

@@ -390,7 +390,7 @@ test("billing: status is honest; Stripe webhook (incl. payment-link custom field
     return;
   }
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!secret) { assert.equal(st.membership.status, "none"); return; } // real keys on the server: don't create Stripe objects from a verification run
+  if (!secret || process.env.STRIPE_FIXTURE_TESTS !== "true") { assert.equal(st.membership.status, "none"); return; } // real keys on the server: don't create Stripe objects from a verification run
   const co = await call(client, "billing", { participant_secret: P.H.secret, action: "checkout" });
   assert.equal(co.error, "BILLING_ERROR"); // dummy key → typed error, never INTERNAL
   const { default: Stripe } = await import("stripe");
@@ -404,7 +404,7 @@ test("billing: status is honest; Stripe webhook (incl. payment-link custom field
   const bad = await post(evt("evt_bad", "checkout.session.completed", {}), "t=1,v1=deadbeef");
   assert.equal(bad.status, 400);
   // Payment-link purchase: participant only in the custom field.
-  const ok = await post(evt("evt_" + Date.now(), "checkout.session.completed", { id: "cs_test_1", object: "checkout.session", mode: "subscription", customer: "cus_test_" + P.H.id, subscription: "sub_test_1", client_reference_id: null, metadata: {}, custom_fields: [{ key: "participant_id", type: "text", text: { value: " " + P.H.id + " " } }] }));
+  const ok = await post(evt("evt_" + Date.now(), "checkout.session.completed", { id: "cs_test_1", object: "checkout.session", mode: "subscription", payment_status: "paid", customer: "cus_test_" + P.H.id, subscription: "sub_test_1", client_reference_id: null, metadata: {}, custom_fields: [{ key: "participant_id", type: "text", text: { value: " " + P.H.id + " " } }] }));
   assert.equal(ok.status, 200);
   assert.equal((await ok.json()).applied, true);
   const m = await call(client, "billing", { participant_secret: P.H.secret });
@@ -476,7 +476,7 @@ test("represented participants are disclosed as such; consent links gate; repres
   assert.equal((await admin(`/participants/${seeker.participant_id}/membership`, { method: "POST", body: JSON.stringify({ action: "grant" }) })).status, 200);
   const disc = await call(client, "discover", { participant_secret: seeker.participant_secret });
   const cand = disc.candidates.find((c: any) => c.candidate_id === rep.participant_id);
-  assert.ok(cand, "represented participant is discoverable"); assert.equal(cand.represented, true); assert.match(disc.note ?? "", /represented:true/);
+  assert.ok(cand, "represented participant is discoverable"); assert.equal(cand.represented, false, "a client name cannot claim hosted representation"); assert.match(disc.note ?? "", /represented:true/);
   const other = disc.candidates.find((c: any) => c.candidate_id !== rep.participant_id); if (other) assert.equal(other.represented, false);
   const bad = await fetch(BASE + "/introduction/ic_notarealtoken0000000000"); assert.equal(bad.status, 200); assert.match(await bad.text(), /isn(&#39;|')t valid/);
   const badPost = await fetch(BASE + "/introduction/ic_notarealtoken0000000000", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "action=no" }); assert.equal(badPost.status, 404);
@@ -486,7 +486,7 @@ test("represented participants are disclosed as such; consent links gate; repres
 
 test("operator mail view reports the configured transport; test send validates its input", async () => {
   const m = await (await admin("/mail")).json();
-  assert.ok(["ses", "smtp"].includes(m.transport));
+  assert.ok(["ses", "smtp", "capture"].includes(m.transport));
   assert.equal(typeof m.enabled, "boolean");
   assert.ok(Array.isArray(m.recent));
   const bad = await admin("/mail/test", { method: "POST", body: JSON.stringify({ to: "not-an-address" }) });
@@ -496,9 +496,10 @@ test("operator mail view reports the configured transport; test send validates i
 test("reserved test domains never reach the mail relay", async () => {
   // This suite runs against production. Handing example.invalid to the relay manufactures real bounces against us.
   const r = await admin("/mail/test", { method: "POST", body: JSON.stringify({ to: "nobody@example.invalid" }) });
+  const view = await (await admin("/mail")).json();
+  if (view.transport === "capture") { assert.equal(r.status, 200); assert.ok(view.recent.some((x: any) => x.status === "captured")); return; }
   assert.equal(r.status, 503);
   assert.match((await r.json()).error ?? "", /reserved test domain/);
-  const view = await (await admin("/mail")).json();
   assert.ok(view.recent.some((x: any) => x.status === "blocked"), "the attempt is logged as blocked");
 });
 
@@ -530,9 +531,9 @@ test("website, llms.txt, stats and operator API", async () => {
     assert.equal(r.status, 200, p);
   }
   const home = await (await fetch(BASE + "/")).text();
-  assert.match(home, /Let your AI[\s\S]*find it for you/);
-  assert.match(home, /Everything below this line is for your AI/);
-  assert.match(home, /Free to watch/);
+  assert.match(home, /Make room/);
+  assert.match(home, /Join the free waitlist/);
+  assert.match(home, /fictional example/);
   const unauth = await fetch(BASE + "/admin/stats");
   assert.equal(unauth.status, 401);
   const t = await admin("/telemetry?days=1");

@@ -40,7 +40,7 @@ const TOOLS: Anthropic.Tool[] = [
 
 async function runTool(iv: Interview, name: string, input: any): Promise<string> {
   if (name === "update_dossier") {
-    await pool.query(`update interviews set dossier_json = jsonb_set(dossier_json, '{facts}', coalesce(dossier_json->'facts', '[]'::jsonb) || $2::jsonb) where interview_id = $1`, [iv.interview_id, JSON.stringify(input.facts ?? [])]);
+    await pool.query(`update interviews set dossier_json = jsonb_set(dossier_json, '{facts}', coalesce(dossier_json->'facts', '[]'::jsonb) || $2::jsonb) where interview_id = $1`, [iv.interview_id, JSON.stringify((Array.isArray(input.facts) ? input.facts : []).slice(0, 12).map((f: any) => ({ topic: String(f.topic ?? "").slice(0, 80), fact: String(f.fact ?? "").slice(0, 1000), provenance: f.provenance === "EXPLICIT" ? "EXPLICIT" : "INFERRED", share: false })))]);
     return "recorded";
   }
   if (name === "set_name") {

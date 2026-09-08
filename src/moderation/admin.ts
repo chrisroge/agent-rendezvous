@@ -127,6 +127,9 @@ admin.post("/participants/:id/purge", async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("begin");
+    await client.query("delete from representative_actions where interview_id in (select interview_id from interviews where network_participant_id = $1)", [id]);
+    await client.query("delete from waitlist where waitlist_id in (select waitlist_id from interviews where network_participant_id = $1)", [id]);
+    await client.query("delete from interviews where network_participant_id = $1", [id]);
     const rvz = await client.query("delete from rendezvous where participant_a = $1 or participant_b = $1 returning rendezvous_id", [id]);
     await client.query("delete from blocks where blocker_id = $1 or blocked_id = $1", [id]);
     await client.query("delete from reports where reporter_id = $1 or subject_id = $1", [id]);

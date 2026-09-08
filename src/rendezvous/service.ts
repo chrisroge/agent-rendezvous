@@ -65,7 +65,7 @@ async function recommendationFlags(db: Queryable, r: RvzRow, me: string) {
 }
 
 async function counterpartyView(db: Queryable, counterpartyId: string) {
-  const [history, intent, rep] = await Promise.all([historyFor(counterpartyId, db), getIntent(counterpartyId, db), db.query("select (client_info->>'name') = 'rendezvous-representative' as r from participants where participant_id = $1", [counterpartyId])]);
+  const [history, intent, rep] = await Promise.all([historyFor(counterpartyId, db), getIntent(counterpartyId, db), db.query("select exists (select 1 from interviews where network_participant_id = $1 and status = 'paid') as r", [counterpartyId])]);
   return { participant_id: counterpartyId, represented: Boolean(rep.rows[0]?.r), history, coarse_facts: intent ? publicIntentView(intent) : null };
 }
 
@@ -150,6 +150,7 @@ export async function openRendezvous(me: Participant, candidateId: string, messa
   const opening = messageIn !== undefined ? validateMessage(messageIn, claimsIn) : null;
 
   return withTx(async (tx) => {
+    await tx.query("select participant_id from participants where participant_id = any($1) order by participant_id for update", [[me.participant_id, candidateId]]);
     const cand = await tx.query(
       `select p.status, p.plan as p_plan, p.plan_status as p_plan_status, i.*,
               (select count(*)::int from rendezvous v where v.participant_b = p.participant_id and v.state = 'OPEN' and v.kind = 'invitation') as pending_invitations
@@ -199,7 +200,7 @@ export async function openRendezvous(me: Participant, candidateId: string, messa
     }
     return {
       rendezvous_id: rendezvousId, kind, phase: "SCREEN", existing: false,
-      counterparty: { participant_id: candidateId, member: candidateIsMember, represented: (await tx.query("select (client_info->>'name') = 'rendezvous-representative' as r from participants where participant_id = $1", [candidateId])).rows[0]?.r === true, history: candHistory, coarse_facts: publicIntentView(rowToIntent(row)) },
+      counterparty: { participant_id: candidateId, member: candidateIsMember, represented: (await tx.query("select exists (select 1 from interviews where network_participant_id = $1 and status = 'paid') as r", [candidateId])).rows[0]?.r === true, history: candHistory, coarse_facts: publicIntentView(rowToIntent(row)) },
       opening_message: sent,
       ...(kind === "invitation" ? { invitation: { expires_at: expiresAt, note: `This is an invitation to a non-member. It does not count against your open-rendezvous limit and expires in ${config.membership.invitationExpiryDays} days unless they join and reply. You will not be told whether they saw it.` } } : {}),
       guidance: PHASE_GUIDANCE.SCREEN,
@@ -500,7 +501,7 @@ export async function statusFor(me: Participant) {
     status: me.plan_status,
     founding_member: member && !!me.stripe_price_id && me.stripe_price_id === config.stripeFounderPriceId,
     price: config.membership.priceText,
-    included_rendezvous_per_month: config.pricing.includedOpensPerMonth,
+    included_rendezvous_per_month: null,
     pay_only_while_searching: true,
     what_it_is: member
       ? "Membership lets you search and talk. It never buys ranking, visibility, or information about who liked whom, and it is not visible to other participants."
